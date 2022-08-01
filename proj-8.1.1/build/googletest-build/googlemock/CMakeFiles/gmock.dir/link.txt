@@ -1,0 +1,1 @@
+/usr/bin/c++ -fPIC -O3 -DNDEBUG -shared -Wl,-soname,libgmock.so -o ../../lib/libgmock.so CMakeFiles/gmock.dir/src/gmock-all.cc.o   -L/mnt/sdb2/Progetti/Extruder/proj-8.1.1/build/lib  -Wl,-rpath,/mnt/sdb2/Progetti/Extruder/proj-8.1.1/build/lib ../../lib/libgtest.so -pthread 

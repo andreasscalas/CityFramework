@@ -1,0 +1,1 @@
+/usr/bin/c++ -O3 -DNDEBUG CMakeFiles/geodtest.dir/tests/geodtest.cpp.o -o ../bin/geodtest   -L/mnt/sdb2/Progetti/Extruder/proj-8.1.1/build/lib  -Wl,-rpath,/mnt/sdb2/Progetti/Extruder/proj-8.1.1/build/lib ../lib/libproj.so.22.1.1 

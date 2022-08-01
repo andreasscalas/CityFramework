@@ -1,0 +1,15 @@
+#ifndef COMMONDEFINITIONS_H
+#define COMMONDEFINITIONS_H
+
+enum class FlagType
+{
+    VISITED,
+    USED,
+    ON_BOUNDARY,
+    ON_HOLE,
+    INSIDE,
+    OUTSIDE,
+    TO_BE_REMOVED
+};
+
+#endif // COMMONDEFINITIONS_H

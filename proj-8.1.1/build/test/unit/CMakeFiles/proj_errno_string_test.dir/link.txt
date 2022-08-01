@@ -1,0 +1,1 @@
+/usr/bin/c++ -O3 -DNDEBUG CMakeFiles/proj_errno_string_test.dir/main.cpp.o CMakeFiles/proj_errno_string_test.dir/proj_errno_string_test.cpp.o -o ../../bin/proj_errno_string_test   -L/mnt/sdb2/Progetti/Extruder/proj-8.1.1/build/lib  -Wl,-rpath,/mnt/sdb2/Progetti/Extruder/proj-8.1.1/build/lib ../../lib/libgtest.so ../../lib/libproj.so.22.1.1 -pthread 

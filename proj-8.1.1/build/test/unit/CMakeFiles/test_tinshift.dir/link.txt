@@ -1,0 +1,1 @@
+/usr/bin/c++ -O3 -DNDEBUG CMakeFiles/test_tinshift.dir/main.cpp.o CMakeFiles/test_tinshift.dir/test_tinshift.cpp.o -o ../../bin/test_tinshift   -L/mnt/sdb2/Progetti/Extruder/proj-8.1.1/build/lib  -Wl,-rpath,/mnt/sdb2/Progetti/Extruder/proj-8.1.1/build/lib ../../lib/libgtest.so ../../lib/libproj.so.22.1.1 -pthread 

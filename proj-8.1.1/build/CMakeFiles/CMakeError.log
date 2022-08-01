@@ -1,0 +1,88 @@
+Performing C SOURCE FILE Test CMAKE_HAVE_LIBC_PTHREAD failed with the following output:
+Change Dir: /mnt/sdb2/Progetti/Extruder/proj-8.1.1/build/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/gmake cmTC_4be46/fast && /usr/bin/gmake  -f CMakeFiles/cmTC_4be46.dir/build.make CMakeFiles/cmTC_4be46.dir/build
+gmake[1]: ingresso nella directory «/mnt/sdb2/Progetti/Extruder/proj-8.1.1/build/CMakeFiles/CMakeTmp»
+Building C object CMakeFiles/cmTC_4be46.dir/src.c.o
+/usr/bin/cc   -DCMAKE_HAVE_LIBC_PTHREAD -std=c99 -o CMakeFiles/cmTC_4be46.dir/src.c.o -c /mnt/sdb2/Progetti/Extruder/proj-8.1.1/build/CMakeFiles/CMakeTmp/src.c
+Linking C executable cmTC_4be46
+/usr/bin/cmake -E cmake_link_script CMakeFiles/cmTC_4be46.dir/link.txt --verbose=1
+/usr/bin/cc  -DCMAKE_HAVE_LIBC_PTHREAD CMakeFiles/cmTC_4be46.dir/src.c.o -o cmTC_4be46 
+/usr/bin/ld: CMakeFiles/cmTC_4be46.dir/src.c.o: in function `main':
+src.c:(.text+0x46): undefined reference to `pthread_create'
+/usr/bin/ld: src.c:(.text+0x52): undefined reference to `pthread_detach'
+/usr/bin/ld: src.c:(.text+0x5e): undefined reference to `pthread_cancel'
+/usr/bin/ld: src.c:(.text+0x6f): undefined reference to `pthread_join'
+collect2: error: ld returned 1 exit status
+gmake[1]: *** [CMakeFiles/cmTC_4be46.dir/build.make:106: cmTC_4be46] Errore 1
+gmake[1]: uscita dalla directory «/mnt/sdb2/Progetti/Extruder/proj-8.1.1/build/CMakeFiles/CMakeTmp»
+gmake: *** [Makefile:140: cmTC_4be46/fast] Errore 2
+
+
+Source file was:
+#include <pthread.h>
+
+void* test_func(void* data)
+{
+  return data;
+}
+
+int main(void)
+{
+  pthread_t thread;
+  pthread_create(&thread, NULL, test_func, NULL);
+  pthread_detach(thread);
+  pthread_cancel(thread);
+  pthread_join(thread, NULL);
+  pthread_atfork(NULL, NULL, NULL);
+  pthread_exit(NULL);
+
+  return 0;
+}
+
+Determining if the function pthread_create exists in the pthreads failed with the following output:
+Change Dir: /mnt/sdb2/Progetti/Extruder/proj-8.1.1/build/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/gmake cmTC_d86f3/fast && /usr/bin/gmake  -f CMakeFiles/cmTC_d86f3.dir/build.make CMakeFiles/cmTC_d86f3.dir/build
+gmake[1]: ingresso nella directory «/mnt/sdb2/Progetti/Extruder/proj-8.1.1/build/CMakeFiles/CMakeTmp»
+Building C object CMakeFiles/cmTC_d86f3.dir/CheckFunctionExists.c.o
+/usr/bin/cc   -DCHECK_FUNCTION_EXISTS=pthread_create -std=c99 -o CMakeFiles/cmTC_d86f3.dir/CheckFunctionExists.c.o -c /usr/share/cmake-3.18/Modules/CheckFunctionExists.c
+Linking C executable cmTC_d86f3
+/usr/bin/cmake -E cmake_link_script CMakeFiles/cmTC_d86f3.dir/link.txt --verbose=1
+/usr/bin/cc  -DCHECK_FUNCTION_EXISTS=pthread_create CMakeFiles/cmTC_d86f3.dir/CheckFunctionExists.c.o -o cmTC_d86f3  -lpthreads 
+/usr/bin/ld: impossibile trovare -lpthreads
+collect2: error: ld returned 1 exit status
+gmake[1]: *** [CMakeFiles/cmTC_d86f3.dir/build.make:106: cmTC_d86f3] Errore 1
+gmake[1]: uscita dalla directory «/mnt/sdb2/Progetti/Extruder/proj-8.1.1/build/CMakeFiles/CMakeTmp»
+gmake: *** [Makefile:140: cmTC_d86f3/fast] Errore 2
+
+
+
+Performing C SOURCE FILE Test HAVE_PTHREAD_MUTEX_RECURSIVE_DEFN failed with the following output:
+Change Dir: /mnt/sdb2/Progetti/Extruder/proj-8.1.1/build/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/gmake cmTC_1f41f/fast && /usr/bin/gmake  -f CMakeFiles/cmTC_1f41f.dir/build.make CMakeFiles/cmTC_1f41f.dir/build
+gmake[1]: ingresso nella directory «/mnt/sdb2/Progetti/Extruder/proj-8.1.1/build/CMakeFiles/CMakeTmp»
+Building C object CMakeFiles/cmTC_1f41f.dir/src.c.o
+/usr/bin/cc   -DHAVE_PTHREAD_MUTEX_RECURSIVE_DEFN  -Werror -Wall -std=c99 -o CMakeFiles/cmTC_1f41f.dir/src.c.o -c /mnt/sdb2/Progetti/Extruder/proj-8.1.1/build/CMakeFiles/CMakeTmp/src.c
+/mnt/sdb2/Progetti/Extruder/proj-8.1.1/build/CMakeFiles/CMakeTmp/src.c: In function ‘main’:
+/mnt/sdb2/Progetti/Extruder/proj-8.1.1/build/CMakeFiles/CMakeTmp/src.c:5:9: error: ‘PTHREAD_MUTEX_RECURSIVE’ undeclared (first use in this function); did you mean ‘PTHREAD_MUTEX_RECURSIVE_NP’?
+    5 |   (void)PTHREAD_MUTEX_RECURSIVE;
+      |         ^~~~~~~~~~~~~~~~~~~~~~~
+      |         PTHREAD_MUTEX_RECURSIVE_NP
+/mnt/sdb2/Progetti/Extruder/proj-8.1.1/build/CMakeFiles/CMakeTmp/src.c:5:9: note: each undeclared identifier is reported only once for each function it appears in
+gmake[1]: *** [CMakeFiles/cmTC_1f41f.dir/build.make:85: CMakeFiles/cmTC_1f41f.dir/src.c.o] Errore 1
+gmake[1]: uscita dalla directory «/mnt/sdb2/Progetti/Extruder/proj-8.1.1/build/CMakeFiles/CMakeTmp»
+gmake: *** [Makefile:140: cmTC_1f41f/fast] Errore 2
+
+
+Source file was:
+
+#include <pthread.h>
+
+int main(int argc, char* argv[]) {
+  (void)PTHREAD_MUTEX_RECURSIVE;
+  (void)argv;
+  return argc;
+}
+  

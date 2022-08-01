@@ -1,0 +1,1 @@
+/usr/bin/c++ -O3 -DNDEBUG CMakeFiles/geod.dir/apps/geod.cpp.o CMakeFiles/geod.dir/apps/geod_set.cpp.o CMakeFiles/geod.dir/apps/geod_interface.cpp.o CMakeFiles/geod.dir/apps/emess.cpp.o -o ../bin/geod   -L/mnt/sdb2/Progetti/Extruder/proj-8.1.1/build/lib  -Wl,-rpath,/mnt/sdb2/Progetti/Extruder/proj-8.1.1/build/lib: ../lib/libproj.so.22.1.1 

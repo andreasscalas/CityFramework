@@ -1,0 +1,1 @@
+/usr/bin/c++ -O3 -DNDEBUG CMakeFiles/cs2cs.dir/apps/cs2cs.cpp.o CMakeFiles/cs2cs.dir/apps/emess.cpp.o CMakeFiles/cs2cs.dir/apps/utils.cpp.o -o ../bin/cs2cs   -L/mnt/sdb2/Progetti/Extruder/proj-8.1.1/build/lib  -Wl,-rpath,/mnt/sdb2/Progetti/Extruder/proj-8.1.1/build/lib: ../lib/libproj.so.22.1.1 

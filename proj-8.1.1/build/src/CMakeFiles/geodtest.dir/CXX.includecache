@@ -1,0 +1,22 @@
+#IncludeRegexLine: ^[ 	]*[#%][ 	]*(include|import)[ 	]*[<"]([^">]+)([">])
+
+#IncludeRegexScan: ^.*$
+
+#IncludeRegexComplain: ^$
+
+#IncludeRegexTransform: 
+
+../src/geodesic.h
+proj_symbol_rename.h
+../src/proj_symbol_rename.h
+
+../src/proj_symbol_rename.h
+
+/mnt/sdb2/Progetti/Extruder/proj-8.1.1/src/tests/geodtest.cpp
+geodesic.h
+/mnt/sdb2/Progetti/Extruder/proj-8.1.1/src/tests/geodesic.h
+stdio.h
+-
+math.h
+-
+

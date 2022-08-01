@@ -1,0 +1,1 @@
+/usr/bin/c++ -O3 -DNDEBUG CMakeFiles/cct.dir/apps/cct.cpp.o CMakeFiles/cct.dir/apps/proj_strtod.cpp.o -o ../bin/cct   -L/mnt/sdb2/Progetti/Extruder/proj-8.1.1/build/lib  -Wl,-rpath,/mnt/sdb2/Progetti/Extruder/proj-8.1.1/build/lib: ../lib/libproj.so.22.1.1 

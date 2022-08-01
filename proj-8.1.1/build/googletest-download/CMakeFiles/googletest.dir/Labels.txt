@@ -1,0 +1,14 @@
+# Target labels
+ googletest
+# Source files and their labels
+/mnt/sdb2/Progetti/Extruder/proj-8.1.1/build/googletest-download/CMakeFiles/googletest
+/mnt/sdb2/Progetti/Extruder/proj-8.1.1/build/googletest-download/CMakeFiles/googletest.rule
+/mnt/sdb2/Progetti/Extruder/proj-8.1.1/build/googletest-download/CMakeFiles/googletest-complete.rule
+/mnt/sdb2/Progetti/Extruder/proj-8.1.1/build/googletest-download/googletest-prefix/src/googletest-stamp/googletest-install.rule
+/mnt/sdb2/Progetti/Extruder/proj-8.1.1/build/googletest-download/googletest-prefix/src/googletest-stamp/googletest-mkdir.rule
+/mnt/sdb2/Progetti/Extruder/proj-8.1.1/build/googletest-download/googletest-prefix/src/googletest-stamp/googletest-download.rule
+/mnt/sdb2/Progetti/Extruder/proj-8.1.1/build/googletest-download/googletest-prefix/src/googletest-stamp/googletest-update.rule
+/mnt/sdb2/Progetti/Extruder/proj-8.1.1/build/googletest-download/googletest-prefix/src/googletest-stamp/googletest-patch.rule
+/mnt/sdb2/Progetti/Extruder/proj-8.1.1/build/googletest-download/googletest-prefix/src/googletest-stamp/googletest-configure.rule
+/mnt/sdb2/Progetti/Extruder/proj-8.1.1/build/googletest-download/googletest-prefix/src/googletest-stamp/googletest-build.rule
+/mnt/sdb2/Progetti/Extruder/proj-8.1.1/build/googletest-download/googletest-prefix/src/googletest-stamp/googletest-test.rule

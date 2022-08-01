@@ -1,0 +1,1 @@
+/usr/bin/c++ -O3 -DNDEBUG CMakeFiles/gie_self_tests.dir/main.cpp.o CMakeFiles/gie_self_tests.dir/gie_self_tests.cpp.o -o ../../bin/gie_self_tests   -L/mnt/sdb2/Progetti/Extruder/proj-8.1.1/build/lib  -Wl,-rpath,/mnt/sdb2/Progetti/Extruder/proj-8.1.1/build/lib ../../lib/libgtest.so ../../lib/libproj.so.22.1.1 -pthread 
