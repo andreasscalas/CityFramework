@@ -76,7 +76,6 @@ void TriangleHelper::launchTriangle(){
     if(outStream.is_open())
     {
         outStream.precision(15);
-        unsigned int vertices_number = 0;
         unsigned int segments_number = 0;
         unsigned int vert_id = 0;
         unsigned int seg_id = 0;

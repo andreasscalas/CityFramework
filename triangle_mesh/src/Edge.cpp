@@ -118,14 +118,21 @@ std::shared_ptr<Triangle> Edge::getLeftTriangle(std::shared_ptr<Vertex>  v)
 {
     std::shared_ptr<Vertex>  v_;
     std::shared_ptr<Vertex>  v__ = this->getOppositeVertex(v);
+    std::shared_ptr<Vertex> t1v1, t1v2, t1v3, t2v1, t2v2, t2v3;
     if(t1 != nullptr)
     {
+        t1v1 = t1->getV1();
+        t1v2 = t1->getV2();
+        t1v3 = t1->getV3();
         v_ = t1->getNextVertex(v);
         if(v_->getId().compare( v__->getId()) == 0)
             return t1;
     }
     if(t2 != nullptr)
     {
+        t2v1 = t2->getV1();
+        t2v2 = t2->getV2();
+        t2v3 = t2->getV3();
         v_ = t2->getNextVertex(v);
         if(v_->getId().compare( v__->getId()) == 0)
             return t2;

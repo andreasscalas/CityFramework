@@ -30,6 +30,7 @@
 #include <surfaceannotation.h>
 #include <lineannotation.h>
 #include <pointannotation.h>
+#include <building.h>
 
 VTK_MODULE_INIT(vtkRenderingOpenGL2)
 VTK_MODULE_INIT(vtkInteractionStyle);
@@ -488,6 +489,20 @@ int main(int argc, char *argv[])
         {
             std::cerr << "Error loading annotations." << std::endl << std::flush;
             exit(3);
+        }
+
+        uint reachedId = 0;
+        for(auto annotation : annotations)
+        {
+            auto tag = annotation->getTag();
+            std::transform(tag.begin(), tag.end(), tag.begin(), [](unsigned char c) { return std::tolower(c); });
+            if(tag.find("building") != std::string::npos)
+            {
+                auto buildingAnnotation = std::dynamic_pointer_cast<SurfaceAnnotation>(annotation);
+                auto building = std::make_shared<Building>();
+                building->setBoundaries(buildingAnnotation->getOutlines());
+                building->setId(std::to_string(reachedId++));
+            }
         }
         all_annotations.push_back(annotations);
     }

@@ -16,6 +16,7 @@ int main(int argc, char* argv[])
         std::cerr << "Missing some parameters" << std::endl;
         return 1;
     }
+    std::cout << "Reading mesh file." << std::endl << std::flush;
     std::shared_ptr<TriangleMesh> mesh = std::make_shared<TriangleMesh>();
     int out1 = mesh->load(argv[1]);
 
@@ -39,12 +40,17 @@ int main(int argc, char* argv[])
 
     AnnotationFileManager manager;
     manager.setMesh(mesh);
+    std::cout << "Reading annotations." << std::endl << std::flush;
     std::vector<std::shared_ptr<Annotation> > all_annotations = manager.readAndStoreAnnotations(argv[2]);
+    std::cout << "Ended!" << std::endl << std::flush;
 
     std::vector<std::shared_ptr<OSMNode> > nodes;
     std::vector<std::shared_ptr<OSMWay> > arcs;
     std::vector<std::shared_ptr<OSMRelation> > relations;
+
+    std::cout << "Reading OSM file." << std::endl << std::flush;
     int out2 = Utilities::loadOSM(argv[3], nodes, arcs, relations);
+    std::cout << "Ended!" << std::endl << std::flush;
     std::map<std::string, std::shared_ptr<Vertex> > osmid_to_vertex;
 
     if(out2 != 0)
@@ -53,6 +59,10 @@ int main(int argc, char* argv[])
         return out2;
     }
 
+    uint counter = 0;
+
+    std::cout << "Processing annotations: 0%" << std::flush;
+    #pragma omp parallel for num_threads(31)
     for(unsigned int i = 0; i < all_annotations.size(); i++)
     {
         if(all_annotations.at(i)->getType() == AnnotationType::Point)
@@ -72,8 +82,20 @@ int main(int argc, char* argv[])
         }
 
         if(all_annotations.at(i)->getType() == AnnotationType::Line)
-            mesh->addAnnotation(all_annotations.at(i));
+        {
+            #pragma omp critical
+            {
+                mesh->addAnnotation(all_annotations.at(i));
+            }
+        }
+
+        #pragma omp critical
+        {
+            counter++;
+            std::cout << counter * 100 / all_annotations.size() << "%\r";
+        }
     }
+    std::cout << std::endl << "Ended!" << std::endl << std::flush;
     all_annotations.clear();
 
     std::vector<std::shared_ptr<Annotation> > streets_annotations = mesh->getAnnotations();
@@ -89,10 +111,10 @@ int main(int argc, char* argv[])
     writer.StartArray();
     /**********************************Ending JSON part**************************************/
 
-
     std::vector<std::shared_ptr<Annotation> > segments_slopes_annotations;
     std::vector<std::shared_ptr<Annotation> > streets_slopes_annotations;
     unsigned int segments_counter = 0, streets_counter = 0;
+    std::cout << "Starting slopes computation: 0%" << std::flush;
     for(unsigned int i = 0; i < streets_annotations.size(); i++)
     {
         std::shared_ptr<LineAnnotation> street = std::dynamic_pointer_cast<LineAnnotation>(streets_annotations.at(i));
@@ -306,6 +328,8 @@ int main(int argc, char* argv[])
         street_annotation->addPolyLine(polylines.at(0));
         street_annotation->setMesh(mesh);
         streets_slopes_annotations.push_back(street_annotation);
+
+        std::cout << i * 100 / streets_annotations.size() << "%\r" <<std::flush;
     }
     /*********************************Beginning JSON part*************************************/
     writer.EndArray();

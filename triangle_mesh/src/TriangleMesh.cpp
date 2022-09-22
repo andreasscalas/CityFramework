@@ -7,6 +7,7 @@
 #include <surfaceannotation.h>
 #include <pointannotation.h>
 #include <lineannotation.h>
+#include <queue>
 
 TriangleMesh::TriangleMesh()
 {
@@ -253,29 +254,30 @@ bool TriangleMesh::removeTriangle(std::string tid)
 
 void TriangleMesh::removeFlaggedTriangles()
 {
+    std::vector<std::shared_ptr<Triangle> > newTriangles;
     for(auto it = triangles.begin(); it != triangles.end(); it++)
-        if((*it)->searchFlag(FlagType::TO_BE_REMOVED) >= 0)
+        if((*it)->searchFlag(FlagType::TO_BE_REMOVED) < 0)
         {
-            if((*it)->getE1()->setTriangle((*it), nullptr))
-                std::cout << "";
-            if((*it)->getE2()->setTriangle((*it), nullptr))
-                std::cout << "";
-            if((*it)->getE3()->setTriangle((*it), nullptr))
-                std::cout << "";
-            it = triangles.erase(it);
-            it--;
+            newTriangles.push_back((*it));
         }
+    triangles.clear();
+    triangles = newTriangles;
 }
 
 
 int TriangleMesh::load(std::string filename)
 {
-    return loadPLY(filename);
+    int retValue = loadPLY(filename);
+
+    orientTrianglesCoherently();
+
+    return retValue;
 }
 
 int TriangleMesh::save(std::string filename, unsigned int precision)
 {
 
+    orientTrianglesCoherently();
     std::cout << "Saving mesh on " << filename  << std::endl;
     int return_code;
     std::ofstream meshStream(filename);
@@ -297,8 +299,6 @@ int TriangleMesh::save(std::string filename, unsigned int precision)
             std::cout << "Writing vertices:" << std::endl;
             for(unsigned int i = 0; i < getVerticesNumber(); i++)
             {
-                if(vertices.at(i)->getZ() > 5000)
-                    vertices.at(i)->print(std::cout );
                 meshStream << vertices.at(i)->getX() << " " << vertices.at(i)->getY() << " " << vertices.at(i)->getZ() << std::endl;
                 if(i % 100 == 0)
                     std::cout << i * 100 / getVerticesNumber() << "%\r" << std::flush;
@@ -307,14 +307,11 @@ int TriangleMesh::save(std::string filename, unsigned int precision)
             std::cout << "Ended! Written " << getVerticesNumber() << " vertices." << std::endl << "Writing triangles:" << std::endl;
             for(unsigned int i = 0; i < getTrianglesNumber(); i++)
             {
+
                 auto v1 = triangles.at(i)->getV1();
                 auto v2 = triangles.at(i)->getV2();
                 auto v3 = triangles.at(i)->getV3();
-                if(Point::orientation(*v1, *v2, *v3) < 0)
-                {
-                    meshStream << "3 " << v1->getId() << " " << v2->getId() << " " << v3->getId() << std::endl;
-                } else
-                    meshStream << "3 " << v1->getId() << " " << v3->getId() << " " << v2->getId() << std::endl;
+                meshStream << "3 " << v1->getId() << " " << v2->getId() << " " << v3->getId() << std::endl;
 
                 if(i % 100 == 0)
                     std::cout << i * 100 / getTrianglesNumber() << "%\r" << std::flush;
@@ -333,16 +330,16 @@ int TriangleMesh::save(std::string filename, unsigned int precision)
 unsigned int TriangleMesh::removeIsolatedVertices()
 {
     unsigned int removed = 0;
+    std::vector<std::shared_ptr<Vertex> > cleant_vertices;
     for(unsigned int i = 0; i < vertices.size(); i++)
     {
-        if(vertices.at(i)->getE0() == nullptr)
+        if(vertices.at(i)->getE0() != nullptr)
         {
-            //std::cout << "Removing vertex with id: " << vertices.at(i)->getId() << std::endl;
-            vertices.erase(vertices.begin() + i);
-            removed++;
-            i--;
+            cleant_vertices.push_back(vertices.at(i));
         }
     }
+    removed = vertices.size() - cleant_vertices.size();
+    vertices = cleant_vertices;
     return removed;
 }
 
@@ -387,6 +384,42 @@ bool TriangleMesh::removeAnnotation(unsigned int id)
 {
     annotations.erase(annotations.begin() + id);
     return true;
+}
+
+void TriangleMesh::orientTrianglesCoherently()
+{
+    std::shared_ptr<Triangle> t = triangles[0];
+    std::queue<std::shared_ptr<Triangle> > q;
+    for(uint i = 0; i < triangles.size(); i++)
+        triangles[i]->removeFlag(FlagType::VISITED);
+    t->addFlag(FlagType::VISITED);
+    q.push(t);
+    while(!q.empty())
+    {
+        t = q.front();
+        q.pop();
+        std::shared_ptr<Edge> e = t->getE1();
+        for(uint i = 0; i < 3; i++)
+        {
+            auto t_ = e->getOppositeTriangle(t);
+            if(t_ != nullptr)
+            {
+                if(t_->searchFlag(FlagType::VISITED) < 0)
+                {
+                    if(!t->isCoherentlyOriented(t_))
+                        t_->orient();
+                    t_->addFlag(FlagType::VISITED);
+                    q.push(t_);
+                }
+
+            }
+            e = t->getNextEdge(e);
+        }
+    }
+
+    for(uint i = 0; i < triangles.size(); i++)
+        triangles[i]->removeFlag(FlagType::VISITED);
+
 }
 
 int TriangleMesh::triangulate(std::vector<std::vector<std::vector<std::shared_ptr<Point> > > > &boundaries, std::vector<std::vector<std::shared_ptr<Point> > > &constraints)
@@ -751,14 +784,11 @@ int TriangleMesh::triangulate(std::vector<std::vector<std::vector<std::shared_pt
     std::vector<unsigned int> generated_triangles = helper.getTriangles();
     //std::vector<double*> generated_points = helper.getAddedPoints();
     std::vector<double*> generated_points(helper.getPoints().begin() + noDEMPointsNumber, helper.getPoints().end());
-    this->getVertex(vertices.size() - 1)->print(std::cout);
     for(unsigned int i = 0; i < generated_points.size(); i++)
     {
         std::vector<std::shared_ptr<Edge> > incident;
         std::shared_ptr<Vertex> v = addNewVertex(generated_points.at(i)[0], generated_points.at(i)[1], 0/*generated_points.at(i)[2]*/);
         v->setId(std::to_string(vertices_id++));
-        if(v->getZ() > 5000)
-            std::cout << std::endl;
         vertices_edges.insert(std::make_pair(vertices.back(), incident));
     }
 

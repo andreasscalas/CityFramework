@@ -233,66 +233,77 @@ std::vector<std::shared_ptr<Triangle> > SurfaceAnnotation::regionGrowing(std::ve
              * the edge connecting the two vertices.
              */
             std::shared_ptr<Triangle> t = boundary[0]->getCommonEdge(boundary[1])->getLeftTriangle(boundary[0]);
-            internalTriangles.push_back(t);
-            t->addFlag(FlagType::USED);
-            //We insert the triangle (or seed of the region growing algorithm) in the queue of available triangles
-            neighbors.push(t);
-            //We mark each edge in the boundary as a boundary edge
-            for(unsigned int i = 1; i < boundary.size(); i++){
+            if(t != nullptr)
+            {
+                internalTriangles.push_back(t);
+                t->addFlag(FlagType::USED);
+                //We insert the triangle (or seed of the region growing algorithm) in the queue of available triangles
+                neighbors.push(t);
+                //We mark each edge in the boundary as a boundary edge
+                for(unsigned int i = 1; i < boundary.size(); i++){
 
-                std::shared_ptr<Vertex> v1 = boundary[i - 1];
-                std::shared_ptr<Vertex> v2 = boundary[i]; //% is the modulo operator. If i is equal to boundary.size() we use boundary[0].
+                    std::shared_ptr<Vertex> v1 = boundary[i - 1];
+                    std::shared_ptr<Vertex> v2 = boundary[i]; //% is the modulo operator. If i is equal to boundary.size() we use boundary[0].
 
-                std::shared_ptr<Edge> e = v1->getCommonEdge(v2);
-                if(e != nullptr)
-                    e->addFlag(FlagType::ON_BOUNDARY);
-                else {
-                    std::cerr << "This shouldn't happen. Error in the identification of the edge." << std::endl << std::flush;
-                    std::cerr << "Local neighbourhood" << std::endl;
-                    std::cerr.precision(15);
-                    std::cerr << "Starting vertex: ";
-                    v1->print(std::cerr);
-                    unsigned int counter = 0;
-                    std::vector<std::shared_ptr<Edge> > ve1 = v1->getVE();
-                    for(unsigned int i = 0; i < ve1.size(); i++)
-                    {
-                        std::shared_ptr<Vertex> v_ = ve1.at(i)->getOppositeVertex(v1);
-                        std::cerr << counter + 1 << "-th neighbour: ";
-                        v_->print(std::cerr);
-                        counter++;
-                    }
-
-                    std::cerr << "Wanted vertex: ";
-                    v2->print(std::cerr);
-                    counter = 0;
-                    std::vector<std::shared_ptr<Edge> > ve2 = v2->getVE();
-                    for(unsigned int i = 0; i < ve2.size(); i++)
-                    {
-                        std::shared_ptr<Vertex> v_ = ve2.at(i)->getOppositeVertex(v2);
-                        std::cerr << counter + 1 << "-th neighbour: ";
-                        v_->print(std::cerr);
-                        counter++;
-                    }
-
-                    for(unsigned int i = 0; i < contours.size(); i++){
-
-                        std::vector<std::shared_ptr<Vertex> > boundary = contours[i];
-                        std::cout << "B" << i << "=[" << std::endl;
-                        for(uint j = 0; j < boundary.size(); j++)
+                    std::shared_ptr<Edge> e = v1->getCommonEdge(v2);
+                    if(e != nullptr)
+                        e->addFlag(FlagType::ON_BOUNDARY);
+                    else {
+                        std::cerr << "This shouldn't happen. Error in the identification of the edge." << std::endl << std::flush;
+                        std::cerr << "Local neighbourhood" << std::endl;
+                        std::cerr.precision(15);
+                        std::cerr << "Starting vertex: ";
+                        v1->print(std::cerr);
+                        unsigned int counter = 0;
+                        std::vector<std::shared_ptr<Edge> > ve1 = v1->getVE();
+                        for(unsigned int i = 0; i < ve1.size(); i++)
                         {
-                            std::static_pointer_cast<Point>(boundary.at(j))->print(std::cout, BracketsType::NONE, " ");
+                            std::shared_ptr<Vertex> v_ = ve1.at(i)->getOppositeVertex(v1);
+                            std::cerr << counter + 1 << "-th neighbour: ";
+                            v_->print(std::cerr);
+                            counter++;
                         }
-                        std::cout << "];" << std::endl;
-                        std::cout << "plot(B" << i << "(:,1), B" << i << "(:,2));" << std::endl;
-                        std::cout << "labels=num2cell(0:length(B" << i << ")-1);" << std::endl;
-                        std::cout << "text(B" << i << "(:,1), B" << i << "(:,2), labels);" << std::endl << std::endl;
+
+                        std::cerr << "Wanted vertex: ";
+                        v2->print(std::cerr);
+                        counter = 0;
+                        std::vector<std::shared_ptr<Edge> > ve2 = v2->getVE();
+                        for(unsigned int i = 0; i < ve2.size(); i++)
+                        {
+                            std::shared_ptr<Vertex> v_ = ve2.at(i)->getOppositeVertex(v2);
+                            std::cerr << counter + 1 << "-th neighbour: ";
+                            v_->print(std::cerr);
+                            counter++;
+                        }
+
+                        for(unsigned int i = 0; i < contours.size(); i++){
+
+                            std::vector<std::shared_ptr<Vertex> > boundary = contours[i];
+                            std::cout << "B" << i << "=[" << std::endl;
+                            for(uint j = 0; j < boundary.size(); j++)
+                            {
+                                std::static_pointer_cast<Point>(boundary.at(j))->print(std::cout, BracketsType::NONE, " ");
+                            }
+                            std::cout << "];" << std::endl;
+                            std::cout << "plot(B" << i << "(:,1), B" << i << "(:,2));" << std::endl;
+                            std::cout << "labels=num2cell(0:length(B" << i << ")-1);" << std::endl;
+                            std::cout << "text(B" << i << "(:,1), B" << i << "(:,2), labels);" << std::endl << std::endl;
+                        }
+
+                        exit(5);
+
                     }
-
-                    exit(5);
-
                 }
-            }
 
+            } else
+            {
+                std::cerr << "Error in the identification of annotated triangles: boundary is not closed!" << std::endl;
+                for(auto b : boundary)
+                {
+                    std::static_pointer_cast<Point>(b)->print(std::cerr, BracketsType::NONE, " ");
+                }
+                exit(245);
+            }
         }
 
         //We will analyse triangles until the queue of available triangles is not empty.

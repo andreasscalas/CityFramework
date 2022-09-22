@@ -290,6 +290,37 @@ double Triangle::computeDistanceFromPoint(Point p, Point *c)
     return (p - closest).norm();
 }
 
+bool Triangle::isCoherentlyOriented(std::shared_ptr<Triangle> t)
+{
+    std::shared_ptr<Vertex> v, v_;
+    auto e = this->getCommonEdge(t);
+//    auto v1 = e->getV1();
+//    auto v2 = e->getV2();
+//    if(this->getNextVertex(v1)->getId().compare(v2->getId()) == 0 &&
+//       t->getNextVertex(v1)->getId().compare(v2->getId()) == 0)
+//        return false;
+//    if(this->getNextVertex(v1)->getId().compare(v2->getId()) != 0 &&
+//       t->getNextVertex(v1)->getId().compare(v2->getId()) != 0)
+//        return false;
+
+    auto vthis1 = this->getPreviousEdge(e)->getCommonVertex(e);
+    auto vthis2 = this->getNextEdge(e)->getCommonVertex(e);
+    auto vt1 = t->getPreviousEdge(e)->getCommonVertex(e);
+    auto vt2 = t->getNextEdge(e)->getCommonVertex(e);
+    if(vthis1->getId().compare(vt1->getId()) == 0 &&
+       vthis2->getId().compare(vt2->getId()) == 0)
+        return false;
+
+    return true;
+}
+
+void Triangle::orient()
+{
+    auto e = this->e2;
+    this->e2 = this->e3;
+    this->e3 = e;
+}
+
 
 bool Triangle::addFlag(FlagType f)
 {

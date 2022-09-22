@@ -16,6 +16,7 @@
 #include <buildingsgroup.h>
 #include <tuple>
 #include <liblas/liblas.hpp>
+#include <shapefil.h>
 
 #include <chrono>
 using namespace std::chrono;
@@ -48,7 +49,7 @@ CityGMLCore::CityGMLCore()
     dsmFilename = "";
 }
 
-CityGMLCore::CityGMLCore(std::string osmFilename, std::string dtmFilename, std::string dsmFilename, std::string lidarFilename)
+CityGMLCore::CityGMLCore(std::string osmFilename, std::string dtmFilename, std::string dsmFilename, std::string lidarFilename, std::string boundsFile)
 {
     this->osmFilename = osmFilename;
     this->dtmFilename = dtmFilename;
@@ -76,6 +77,7 @@ CityGMLCore::CityGMLCore(std::string osmFilename, std::string dtmFilename, std::
         std::cerr << "Error loading DSM file" << std::endl;
 
 
+    Utilities::load_shapefile_shp(boundsFile, bounds);
     int retValue_ = readLiDAR(lidarFilename);
 }
 
@@ -345,12 +347,17 @@ int CityGMLCore::readLiDAR(std::string filename)
                 liblas::Point const& p = reader.GetPoint();
                 std::shared_ptr<Point> p_ = std::make_shared<Point>(p.GetX(), p.GetY(), p.GetZ());
                 std::string s = p.GetClassification().GetClassName();
-                if(s.compare("Ground") == 0)
-                    lidarDTMPoints.push_back(p_);
-                else if (p.GetReturnNumber() == p.GetNumberOfReturns())
-                    lidarDSMPoints.push_back(p_);
+
+                if(!isPointOutsideBounds(p_))
+                {
+                    if(s.compare("Ground") == 0)
+                        lidarDTMPoints.push_back(p_);
+                    else if (p.GetReturnNumber() == p.GetNumberOfReturns())
+                        lidarDSMPoints.push_back(p_);
+                }
             }
 
+            ifs.close();
             return 0;
         }
         return -1;
@@ -1151,7 +1158,6 @@ std::vector<std::vector<double> > CityGMLCore::extractBuildingsHeightsFromLidar(
     pointVec points_vector;
     for(auto p : lidarDSMPoints)
     {
-
         std::vector<double> point = { p->getX(), p->getY(), 0.0};
         points_vector.push_back(point);
     }
@@ -1159,6 +1165,7 @@ std::vector<std::vector<double> > CityGMLCore::extractBuildingsHeightsFromLidar(
 
     counter = 0;
 
+    std::cout << "0%" << std::endl;
     #pragma omp parallel for num_threads(31)
     for(uint i = 0; i < buildings.size(); i++)
     {
@@ -1189,7 +1196,7 @@ std::vector<std::vector<double> > CityGMLCore::extractBuildingsHeightsFromLidar(
         for(unsigned int j = 0; j < neighbors_indices.size(); j++)
         {
             auto p = lidarDSMPoints.at(neighbors_indices.at(j));
-            bool insideOuter = false, outsideInner = false;
+            bool insideOuter = false, outsideInner = true;
             if(Utilities::isPointInsidePolygon(p, boundaries2D[0]))
             {
                 insideOuter = true;
@@ -1205,22 +1212,8 @@ std::vector<std::vector<double> > CityGMLCore::extractBuildingsHeightsFromLidar(
         }
 
         if(heights[i].size() == 0)
-        {
-            #pragma omp critical
-            {
-                std::cerr << "Impossible case: boundary does not include any pixel while no pixel wholly include the boundary and boundary intersects no pixel" << std::endl;
-                std::cerr << i << std::endl;
-                auto boundaries = buildings[i]->getBoundaries();
-                for(auto b : boundaries)
-                    for(auto p : b)
-                        std::static_pointer_cast<Point>(p)->print(std::cout, BracketsType::NONE, " ");
-                std::cout << std::endl;
-                for(uint j = 0; j < neighbors_indices.size(); j++)
-                    lidarDSMPoints.at(neighbors_indices[j])->print(std::cout, BracketsType::NONE, " ");
+            heights[i].push_back(buildings[i]->getBoundaries()[0][0]->getZ());
 
-                exit(6);
-            }
-        }
 
         #pragma omp critical
         {
@@ -1281,22 +1274,6 @@ void CityGMLCore::associateElevations(std::vector<std::vector<VertexList> > tria
         }
     }
 
-    /*//#pragma omp parallel for num_threads(31)
-    for(auto nit = nodes.begin(); nit != nodes.end(); nit++)
-    {
-        auto n = nit->second;
-        std::shared_ptr<Point> p = n->getCoordinates();
-        point_t point = {p->getX(), p->getY(), 0.0};
-        size_t ret_index = tree.nearest_index(point);
-        p->setZ(lidarDTMPoints[ret_index]->getZ());
-        #pragma omp critical
-        {
-            counter++;
-            std::cout << counter * 100 / nodes.size() << "%\r" << std::flush;
-        }
-
-    }*/
-
 }
 
 std::string CityGMLCore::getOsmFilename() const
@@ -1347,6 +1324,20 @@ bool isPointOutsideBounds(const Point p, const Point min, const Point max)
            p.getX() > max.getX() || p.getY() > max.getY();
 }
 
+bool CityGMLCore::isPointOutsideBounds(const std::shared_ptr<Point> p)
+{
+    bool outside = true, inside = false;
+    outside = !Utilities::isPointInsidePolygon(p, bounds[0]);
+    for(uint i = 1; i < bounds.size(); i++)
+    {
+        if(Utilities::isPointInsidePolygon(p, bounds[i]))
+        {
+            return true;
+        }
+    }
+    return outside;
+}
+
 int CityGMLCore::buildLevel(uint level)
 {
 
@@ -1368,169 +1359,6 @@ int CityGMLCore::buildLevel0()
         if(meshes[0] != nullptr)
             meshes[0].reset();
 
-//        {
-//            std::cout << "Starting triangulation phase:" << std::endl;
-//            std::ofstream stream("lidarDTMPoints.poly");
-//            std::vector<double*> points;
-//            Point min(std::numeric_limits<double>::max(),
-//                      std::numeric_limits<double>::max(),
-//                      0);
-//            Point max(-std::numeric_limits<double>::max(),
-//                      -std::numeric_limits<double>::max(),
-//                      0);
-
-//            for(uint i = 0; i < lidarDTMPoints.size(); i++)
-//            {
-//                if(lidarDTMPoints.at(i)->getX() < min.getX())
-//                    min.setX(lidarDTMPoints.at(i)->getX());
-//                if(lidarDTMPoints.at(i)->getY() < min.getY())
-//                    min.setY(lidarDTMPoints.at(i)->getY());
-//                if(lidarDTMPoints.at(i)->getX() > max.getX())
-//                    max.setX(lidarDTMPoints.at(i)->getX());
-//                if(lidarDTMPoints.at(i)->getY() > max.getY())
-//                    max.setY(lidarDTMPoints.at(i)->getY());
-//            }
-//            std::vector<std::shared_ptr<Point> > window;
-//            double epsilon = (min-max).norm() / 100;
-//            window.push_back(std::make_shared<Point>(min.getX() - epsilon, min.getY() - epsilon, 0));
-//            window.push_back(std::make_shared<Point>(max.getX() + epsilon, min.getY() - epsilon, 0));
-//            window.push_back(std::make_shared<Point>(max.getX() + epsilon, max.getY() + epsilon, 0));
-//            window.push_back(std::make_shared<Point>(min.getX() - epsilon, max.getY() + epsilon, 0));
-
-//            points.push_back(new double[3]{window[0]->getX(), window[0]->getY(), window[0]->getZ()});
-//            points.push_back(new double[3]{window[1]->getX(), window[1]->getY(), window[1]->getZ()});
-//            points.push_back(new double[3]{window[2]->getX(), window[2]->getY(), window[2]->getZ()});
-//            points.push_back(new double[3]{window[3]->getX(), window[3]->getY(), window[3]->getZ()});
-//            for(auto v : lidarDTMPoints)
-//            {
-//                if(Utilities::isPointInsidePolygon(v, window))
-//                {
-//                    points.push_back(new double[3]);
-//                    points.back()[0] = v->getX();
-//                    points.back()[1] = v->getY();
-//                    points.back()[2] = v->getZ();
-//                }
-//            }
-//            std::vector<std::vector<uint> > polylines = { {0, 1}, {1, 2}, {2, 3}, {3, 0} };
-//            std::vector<double*> holes;
-//            std::cout << "Calling Triangle:" << std::endl;
-//            TriHelper::TriangleHelper th(points, polylines, holes, false);
-//            auto mesh = std::make_shared<TriangleMesh>();
-//            auto meshPoints = th.getPoints();
-//            auto meshTriangles = th.getTriangles();
-//            std::map<uint, std::vector<std::shared_ptr<Edge> > > vertices_edges;
-
-//            std::cout << "Creating new vertices" << std::endl;
-//            for(auto p : meshPoints)
-//            {
-//                mesh->addNewVertex(p[0], p[1], p[2]);
-//                uint id = mesh->getVerticesNumber() - 1;
-//                mesh->getVertex(id)->setId(std::to_string(id));
-//                std::vector<std::shared_ptr<Edge> > connected_list;
-//                vertices_edges.insert(std::make_pair(id, connected_list));
-//            }
-
-//            auto searchEdgeContainingVertex = [vertices_edges](std::shared_ptr<Vertex> v1, std::shared_ptr<Vertex> v2){
-//                std::shared_ptr<Edge> edge = nullptr;
-//                std::vector<std::shared_ptr<Edge> > list1 = vertices_edges.at(stoi(v1->getId()));
-//                auto it1 = std::find_if(list1.begin(), list1.end(), [v2](std::shared_ptr<Edge> e) { return e->hasVertex(v2);});
-//                if(it1 != list1.end())
-//                    edge = *it1;
-//                else
-//                {
-//                    std::vector<std::shared_ptr<Edge> > list2 = vertices_edges.at(stoi(v2->getId()));
-//                    auto it2 = std::find_if(list2.begin(), list2.end(), [v1](std::shared_ptr<Edge> e) { return e->hasVertex(v1);});
-//                    if(it2 != list2.end())
-//                        edge = *it2;
-//                }
-
-//                return edge;
-//            };
-//            std::cout << "Creating topology" << std::endl;
-//            for(uint j = 0; j < meshTriangles.size() / 3; j++)
-//            {
-//                std::shared_ptr<Vertex> v1 = mesh->getVertex(meshTriangles[j * 3]);
-//                std::shared_ptr<Vertex> v2 = mesh->getVertex(meshTriangles[j * 3 + 1]);
-//                std::shared_ptr<Vertex> v3 = mesh->getVertex(meshTriangles[j * 3 + 2]);
-
-
-//                std::shared_ptr<Edge> e1 = searchEdgeContainingVertex(v1, v2);
-//                if(e1 == nullptr)
-//                {
-//                    e1 = mesh->addNewEdge(v1, v2);
-//                    e1->setId(std::to_string(mesh->getEdgesNumber() - 1));
-//                    vertices_edges[stoi(v1->getId())].push_back(e1);
-//                    vertices_edges[stoi(v2->getId())].push_back(e1);
-//                    if(v1->getE0() == nullptr)
-//                        v1->setE0(e1);
-//                    if(v2->getE0() == nullptr)
-//                        v2->setE0(e1);
-//                }
-
-//                std::shared_ptr<Edge> e2 = searchEdgeContainingVertex(v2,v3);
-//                if(e2 == nullptr)
-//                {
-//                    e2 = mesh->addNewEdge(v2, v3);
-//                    e2->setId(std::to_string(mesh->getEdgesNumber() - 1));
-//                    vertices_edges[stoi(v2->getId())].push_back(e2);
-//                    vertices_edges[stoi(v3->getId())].push_back(e2);
-//                    if(v2->getE0() == nullptr)
-//                        v2->setE0(e2);
-//                    if(v3->getE0() == nullptr)
-//                        v3->setE0(e2);
-//                }
-
-//                std::shared_ptr<Edge> e3 = searchEdgeContainingVertex(v3, v1);
-//                if(e3 == nullptr)
-//                {
-//                    e3 = mesh->addNewEdge(v3, v1);
-//                    e3->setId(std::to_string(mesh->getEdgesNumber() - 1));
-//                    vertices_edges[stoi(v3->getId())].push_back(e3);
-//                    vertices_edges[stoi(v1->getId())].push_back(e3);
-//                    if(v3->getE0() == nullptr)
-//                        v3->setE0(e3);
-//                    if(v1->getE0() == nullptr)
-//                        v1->setE0(e3);
-//                }
-
-//                std::shared_ptr<Triangle> t = mesh->addNewTriangle(e1, e2, e3);
-//                if(e1->getT1() == nullptr)
-//                    e1->setT1(t);
-//                else if(e1->getT2() == nullptr)
-//                    e1->setT2(t);
-//                else
-//                {
-//                    std::cerr << "Non manifold configuration!" << std::endl;
-//                    mesh->save("witherror.ply",15);
-//                    exit(123);
-//                }
-//                if(e2->getT1() == nullptr)
-//                    e2->setT1(t);
-//                else if(e2->getT2() == nullptr)
-//                    e2->setT2(t);
-//                else
-//                {
-//                    std::cerr << "Non manifold configuration!" << std::endl;
-//                    mesh->save("witherror.ply",15);
-//                    exit(123);
-//                }
-//                if(e3->getT1() == nullptr)
-//                    e3->setT1(t);
-//                else if(e3->getT2() == nullptr)
-//                    e3->setT2(t);
-//                else
-//                {
-//                    std::cerr << "Non manifold configuration!" << std::endl;
-//                    mesh->save("witherror.ply",15);
-//                    exit(123);
-//                }
-
-//            }
-
-//            mesh->save("lidar.ply", 15);
-//            exit(0);
-
-//        }
         meshes[0] = std::make_shared<TriangleMesh>();
 
         /* Following GDAL definition:
@@ -1542,11 +1370,11 @@ int CityGMLCore::buildLevel0()
          *  GT(5) n-s pixel resolution / pixel height (negative value for a north-up image).
          */
         double* geoTransform = dtm->GetGeoTransform();
-        Point min(geoTransform[0],
-                  geoTransform[3] + dtm->GetDimensions()[1] * geoTransform[5],
+        Point min(std::numeric_limits<double>::max(),
+                  std::numeric_limits<double>::max(),
                   0);
-        Point max(geoTransform[0] + dtm->GetDimensions()[0] * geoTransform[1],
-                  geoTransform[3],
+        Point max(-std::numeric_limits<double>::max(),
+                  -std::numeric_limits<double>::max(),
                   0);
 
         for(uint i = 0; i < lidarDTMPoints.size(); i++)
@@ -1571,7 +1399,7 @@ int CityGMLCore::buildLevel0()
             //Keep only arcs with all the nodes inside the bounds defined by the DTM
             for(uint j = 0; j < ait->second->getNodes().size(); j++)
             {
-                if(isPointOutsideBounds(*ait->second->getNodes().at(j)->getCoordinates(), min, max))
+                if(isPointOutsideBounds(ait->second->getNodes().at(j)->getCoordinates()))
                 {
                     for(uint j = 0; j < ait->second->getNodes().size(); j++)
                     {
@@ -1756,7 +1584,7 @@ int CityGMLCore::buildLevel0()
                 bool erased = false;
                 for(auto kit = jit->begin(); kit != jit->end(); kit++)
                 {
-                    if(isPointOutsideBounds(**kit, min, max))
+                    if(isPointOutsideBounds(*kit))
                     {
                         for(auto kit = jit->begin(); kit != jit->end(); kit++)
                             kit->reset();
@@ -2066,166 +1894,6 @@ int CityGMLCore::buildLevel0()
         removeAlreadyExistingPoints(triangulationHoles, arcsPoints);
         VertexList constraintVertices = createLiDARDTMVertices(/*triangulationHoles, arcsPoints/*city_size, *origin*/);
 
-        /********************CREATING POINTS FILE*********************/
-//        {
-//            std::cout << "Starting triangulation phase:" << std::endl;
-//            std::ofstream stream("lidarDTMPoints.poly");
-//            stream << constraintVertices.size() + 4 << " 2 1 0" << std::endl;
-
-//            constraintVertices.insert(constraintVertices.begin(), external_bb[0].begin(), external_bb[0].end());
-//            std::vector<double*> points;
-//            std::vector<std::shared_ptr<Point> > window;
-//            window.push_back(std::make_shared<Point>((*external_bb[0][0] + *external_bb[0][1] + *external_bb[0][2] + *external_bb[0][3]) / 4));
-//            window.push_back(std::make_shared<Point>(*window[0] + ((*external_bb[0][1] - *external_bb[0][0]) / 10)));
-//            window.push_back(std::make_shared<Point>(*window[1] + ((*external_bb[0][2] - *external_bb[0][1]) / 10)));
-//            window.push_back(std::make_shared<Point>(*window[0] + ((*external_bb[0][2] - *external_bb[0][1]) / 10)));
-
-//            points.push_back(new double[3]{window[0]->getX(), window[0]->getY(), window[0]->getZ()});
-//            points.push_back(new double[3]{window[1]->getX(), window[1]->getY(), window[1]->getZ()});
-//            points.push_back(new double[3]{window[2]->getX(), window[2]->getY(), window[2]->getZ()});
-//            points.push_back(new double[3]{window[3]->getX(), window[3]->getY(), window[3]->getZ()});
-//            for(auto v : constraintVertices)
-//            {
-//                if(Utilities::isPointInsidePolygon(v, window))
-//                {
-//                    points.push_back(new double[3]);
-//                    points.back()[0] = v->getX();
-//                    points.back()[1] = v->getY();
-//                    points.back()[2] = v->getZ();
-//                }
-//            }
-//            constraintVertices.clear();
-//            meshes[0].reset();
-//            std::vector<std::vector<uint> > polylines = { {0, 1}, {1, 2}, {2, 3}, {3, 0} };
-//            std::vector<double*> holes;
-//            std::cout << "Calling Triangle:" << std::endl;
-//            TriHelper::TriangleHelper th(points, polylines, holes, false);
-//            auto mesh = std::make_shared<TriangleMesh>();
-//            auto meshPoints = th.getPoints();
-//            auto meshTriangles = th.getTriangles();
-//            std::map<uint, std::vector<std::shared_ptr<Edge> > > vertices_edges;
-
-//            std::cout << "Creating new vertices" << std::endl;
-//            for(auto p : meshPoints)
-//            {
-//                mesh->addNewVertex(p[0], p[1], p[2]);
-//                uint id = mesh->getVerticesNumber() - 1;
-//                mesh->getVertex(id)->setId(std::to_string(id));
-//                std::vector<std::shared_ptr<Edge> > connected_list;
-//                vertices_edges.insert(std::make_pair(id, connected_list));
-//            }
-
-//            auto searchEdgeContainingVertex = [vertices_edges](std::shared_ptr<Vertex> v1, std::shared_ptr<Vertex> v2){
-//                std::shared_ptr<Edge> edge = nullptr;
-//                std::vector<std::shared_ptr<Edge> > list1 = vertices_edges.at(stoi(v1->getId()));
-//                auto it1 = std::find_if(list1.begin(), list1.end(), [v2](std::shared_ptr<Edge> e) { return e->hasVertex(v2);});
-//                if(it1 != list1.end())
-//                    edge = *it1;
-//                else
-//                {
-//                    std::vector<std::shared_ptr<Edge> > list2 = vertices_edges.at(stoi(v2->getId()));
-//                    auto it2 = std::find_if(list2.begin(), list2.end(), [v1](std::shared_ptr<Edge> e) { return e->hasVertex(v1);});
-//                    if(it2 != list2.end())
-//                        edge = *it2;
-//                }
-
-//                return edge;
-//            };
-//            std::cout << "Creating topology" << std::endl;
-//            for(uint j = 0; j < meshTriangles.size() / 3; j++)
-//            {
-//                std::shared_ptr<Vertex> v1 = mesh->getVertex(meshTriangles[j * 3]);
-//                std::shared_ptr<Vertex> v2 = mesh->getVertex(meshTriangles[j * 3 + 1]);
-//                std::shared_ptr<Vertex> v3 = mesh->getVertex(meshTriangles[j * 3 + 2]);
-
-
-//                std::shared_ptr<Edge> e1 = searchEdgeContainingVertex(v1, v2);
-//                if(e1 == nullptr)
-//                {
-//                    e1 = mesh->addNewEdge(v1, v2);
-//                    e1->setId(std::to_string(mesh->getEdgesNumber() - 1));
-//                    vertices_edges[stoi(v1->getId())].push_back(e1);
-//                    vertices_edges[stoi(v2->getId())].push_back(e1);
-//                    if(v1->getE0() == nullptr)
-//                        v1->setE0(e1);
-//                    if(v2->getE0() == nullptr)
-//                        v2->setE0(e1);
-//                }
-
-//                std::shared_ptr<Edge> e2 = searchEdgeContainingVertex(v2,v3);
-//                if(e2 == nullptr)
-//                {
-//                    e2 = mesh->addNewEdge(v2, v3);
-//                    e2->setId(std::to_string(mesh->getEdgesNumber() - 1));
-//                    vertices_edges[stoi(v2->getId())].push_back(e2);
-//                    vertices_edges[stoi(v3->getId())].push_back(e2);
-//                    if(v2->getE0() == nullptr)
-//                        v2->setE0(e2);
-//                    if(v3->getE0() == nullptr)
-//                        v3->setE0(e2);
-//                }
-
-//                std::shared_ptr<Edge> e3 = searchEdgeContainingVertex(v3, v1);
-//                if(e3 == nullptr)
-//                {
-//                    e3 = mesh->addNewEdge(v3, v1);
-//                    e3->setId(std::to_string(mesh->getEdgesNumber() - 1));
-//                    vertices_edges[stoi(v3->getId())].push_back(e3);
-//                    vertices_edges[stoi(v1->getId())].push_back(e3);
-//                    if(v3->getE0() == nullptr)
-//                        v3->setE0(e3);
-//                    if(v1->getE0() == nullptr)
-//                        v1->setE0(e3);
-//                }
-
-//                std::shared_ptr<Triangle> t = mesh->addNewTriangle(e1, e2, e3);
-//                if(e1->getT1() == nullptr)
-//                    e1->setT1(t);
-//                else if(e1->getT2() == nullptr)
-//                    e1->setT2(t);
-//                else
-//                {
-//                    std::cerr << "Non manifold configuration!" << std::endl;
-//                    mesh->save("witherror.ply",15);
-//                    exit(123);
-//                }
-//                if(e2->getT1() == nullptr)
-//                    e2->setT1(t);
-//                else if(e2->getT2() == nullptr)
-//                    e2->setT2(t);
-//                else
-//                {
-//                    std::cerr << "Non manifold configuration!" << std::endl;
-//                    mesh->save("witherror.ply",15);
-//                    exit(123);
-//                }
-//                if(e3->getT1() == nullptr)
-//                    e3->setT1(t);
-//                else if(e3->getT2() == nullptr)
-//                    e3->setT2(t);
-//                else
-//                {
-//                    std::cerr << "Non manifold configuration!" << std::endl;
-//                    mesh->save("witherror.ply",15);
-//                    exit(123);
-//                }
-
-//            }
-
-//            mesh->save("lidar.ply", 15);
-//            exit(0);
-
-//        }
-        /*************************************************************/
-
-        //arcsPoints.insert(arcsPoints.end(), constraintVertices.begin(), constraintVertices.end());
-
-        for(uint i = 0; i < constraintVertices.size(); i++)
-        {
-            double z = constraintVertices[i]->getZ();
-            if(z > 5000)
-                std::cout << std::endl;
-        }
         meshes[0]->triangulate(triangulationHoles, arcsPoints, constraintVertices);
         for(uint i = 0; i < constraintVertices.size(); i++)
         {
@@ -3319,6 +2987,7 @@ int CityGMLCore::buildLevel0()
                 }
             }
 
+            std::ofstream stream("annotation_positions.m");
             for(auto p : flaggedMeshVertices)
                 meshes[0]->getVertex(p)->removeFlag(FlagType::INSIDE);
             for(uint j = 0; j < arcsPoints.at(i).size(); j++)
@@ -3339,6 +3008,8 @@ int CityGMLCore::buildLevel0()
                 }
             }
             annotation->addPolyLine(annotationPolyline);
+
+            std::cout << i * 100 / streetsArcs.size() << "%\r" << std::flush;
             i++;
             std::shared_ptr<SemanticAttribute> attribute = std::make_shared<SemanticAttribute>();
             attribute->setId(0);
@@ -3352,57 +3023,57 @@ int CityGMLCore::buildLevel0()
         }
 
         i = 0;
-//        for(auto it = traversed_nodes.begin(); it != traversed_nodes.end(); it++)
-//        {
+        for(auto it = traversed_nodes.begin(); it != traversed_nodes.end(); it++)
+        {
 
-//            std::shared_ptr<PointAnnotation> annotation = std::make_shared<PointAnnotation>();
-//            annotation->setId(static_cast<uint>(streetsArcs.size()) - 1 + i);
-//            annotation->setTag("node n° " + std::to_string(i++));
-//            annotation->setHierarchyLevel(0);
-//            annotation->setColor(street_color);
-//            annotation->addPoint(it->second);
+            std::shared_ptr<PointAnnotation> annotation = std::make_shared<PointAnnotation>();
+            annotation->setId(static_cast<uint>(streetsArcs.size()) - 1 + i);
+            annotation->setTag("node n° " + std::to_string(i++));
+            annotation->setHierarchyLevel(0);
+            annotation->setColor(street_color);
+            annotation->addPoint(it->second);
 
-//            std::shared_ptr<SemanticAttribute> attribute = std::make_shared<SemanticAttribute>();
-//            attribute->setId(0);
-//            attribute->setKey("osmid");
-//            attribute->setValue(it->first->getId());
-//            annotation->addAttribute(attribute);
+            std::shared_ptr<SemanticAttribute> attribute = std::make_shared<SemanticAttribute>();
+            attribute->setId(0);
+            attribute->setKey("osmid");
+            attribute->setValue(it->first->getId());
+            annotation->addAttribute(attribute);
 
-//            annotation->setMesh(meshes[0]);
-//            meshes[0]->addAnnotation(annotation);
+            annotation->setMesh(meshes[0]);
+            meshes[0]->addAnnotation(annotation);
 
-//        }
+        }
 
 
 
         uint bid = static_cast<uint>(streetsArcs.size()) + traversed_nodes.size();
 
 
-//        for(uint i = 0; i < buildings.size(); i++)
-//        {
+        for(uint i = 0; i < buildings.size(); i++)
+        {
 
-//            auto boundaries = buildings[i]->getBoundaries();
-//            std::shared_ptr<SurfaceAnnotation> annotation = std::make_shared<SurfaceAnnotation>();
-//            annotation->setId(bid);
-//            annotation->setTag("building n° " + std::to_string(bid++));
-//            annotation->setHierarchyLevel(0);
-//            annotation->setColor(building_color);
+            auto boundaries = buildings[i]->getBoundaries();
+            std::shared_ptr<SurfaceAnnotation> annotation = std::make_shared<SurfaceAnnotation>();
+            annotation->setId(bid);
+            annotation->setTag("building n° " + std::to_string(bid++));
+            annotation->setHierarchyLevel(0);
+            annotation->setColor(building_color);
 
-//            for(uint j = 0; j < boundaries.size(); j++)
-//            {
-//                std::vector<std::shared_ptr<Vertex> > annotationBoundary;
-//                for(uint k = 0; k < boundaries.at(j).size(); k++)
-//                    annotationBoundary.push_back(std::static_pointer_cast<Vertex>(boundaries.at(j).at(k)));
-//                annotation->addOutline(annotationBoundary);
-//            }
-//            annotation->setMesh(meshes[0]);
-//            meshes[0]->addAnnotation(annotation);
-//            auto height = annotation->getOutlines()[0][0]->getZ();
-//            auto involved = annotation->getInvolvedVertices();
+            for(uint j = 0; j < boundaries.size(); j++)
+            {
+                std::vector<std::shared_ptr<Vertex> > annotationBoundary;
+                for(uint k = 0; k < boundaries.at(j).size(); k++)
+                    annotationBoundary.push_back(std::static_pointer_cast<Vertex>(boundaries.at(j).at(k)));
+                annotation->addOutline(annotationBoundary);
+            }
+            annotation->setMesh(meshes[0]);
+            meshes[0]->addAnnotation(annotation);
+            auto height = annotation->getOutlines()[0][0]->getZ();
+            auto involved = annotation->getInvolvedVertices();
 
-//            for(uint j = 0; j < involved.size(); j++)
-//                involved.at(j)->setZ(height);
-//        }
+            for(uint j = 0; j < involved.size(); j++)
+                involved.at(j)->setZ(height);
+        }
         meshes[0]->removeIsolatedVertices();
         for(uint i = 0; i < meshes[0]->getVerticesNumber(); i++)
             meshes[0]->getVertex(i)->setId(std::to_string(i));
@@ -3415,7 +3086,6 @@ int CityGMLCore::buildLevel0()
         manager.writeAnnotations("annotations.ant");
         meshes[0]->save("level0.ply", 15);
 
-        exit(111);
 
     } else
         return -1;
@@ -3426,8 +3096,10 @@ int CityGMLCore::buildLevel1() {
 
     std::cout << "Building level 1" << std::endl;
     //float** heights = dsm->GetRasterBand(1);
-    auto heights = extractBuildingsHeightsFromLidar();
     this->meshes[1] = std::make_shared<TriangleMesh>(this->meshes[0]);
+    this->meshes[0].reset();
+    lidarDTMPoints.clear();
+    auto heights = extractBuildingsHeightsFromLidar();
     //Questa cosa va risolta assolutamente
     for(uint i = 0; i < this->meshes[1]->getAnnotations().size(); i++)
         meshes[1]->getAnnotations().at(i)->setMesh(meshes[1]);
@@ -3454,24 +3126,6 @@ int CityGMLCore::buildLevel1() {
 
         }
         height_mean /= heights.at(i).size();
-//        for(uint j = 0; j < pixelToBuildingAssociation.at(i).size(); j++)
-//        {
-//            height_mean += static_cast<double>(heights[pixelToBuildingAssociation.at(i)[j].first][pixelToBuildingAssociation.at(i)[j].second]);
-//            if(height_min > static_cast<double>(heights[pixelToBuildingAssociation.at(i)[j].first][pixelToBuildingAssociation.at(i)[j].second]))
-//            {
-//                row_min = static_cast<int>(pixelToBuildingAssociation.at(i)[j].first);
-//                col_min = static_cast<int>(pixelToBuildingAssociation.at(i)[j].second);
-//                height_min = static_cast<double>(heights[pixelToBuildingAssociation.at(i)[j].first][pixelToBuildingAssociation.at(i)[j].second]);
-//            }
-//            if(height_max < static_cast<double>(heights[pixelToBuildingAssociation.at(i)[j].first][pixelToBuildingAssociation.at(i)[j].second]))
-//            {
-//                row_max = static_cast<int>(pixelToBuildingAssociation.at(i)[j].first);
-//                col_max = static_cast<int>(pixelToBuildingAssociation.at(i)[j].second);
-//                height_max = static_cast<double>(heights[pixelToBuildingAssociation.at(i)[j].first][pixelToBuildingAssociation.at(i)[j].second]);
-//            }
-
-//        }
-//        height_mean /= static_cast<double>(pixelToBuildingAssociation.at(i).size());
 
         std::shared_ptr<Annotation> annotation;
         std::string tag;
@@ -3485,45 +3139,13 @@ int CityGMLCore::buildLevel1() {
 
         std::shared_ptr<SurfaceAnnotation> buildingAnnotation = std::dynamic_pointer_cast<SurfaceAnnotation>(annotation); //Non proprio l'ideale
         auto outlines = buildingAnnotation->getOutlines();
-//        if(i==7)
-//        {
-//            uint bid = 0;
-//            for(auto b : boundaries)
-//            {
-
-//                std::cout << "B" << bid << "=[" << std::endl;
-//                for(auto p : b)
-//                    std::static_pointer_cast<Point>(p)->print(std::cout, BracketsType::NONE, " ");
-//                std::cout << "];" << std::endl;
-//                std::cout << "plot(B" << bid << "(:,1), B" << bid << "(:,2));" << std::endl;
-//                std::cout << "labels=[" << std::endl;
-//                for(auto p : b)
-//                    std::cout << p->getId() << std::endl;
-//                std::cout << "];" << std::endl;
-//                std::cout << "labels=strsplit(num2str(labels));" << std::endl;
-//                std::cout << "text(B" << bid << "(:,1), B" << bid++ << "(:,2), labels);" << std::endl;
-//            }
-//        }
         auto triangles = buildingAnnotation->getTriangles();
-//        auto tid = 0;
+
+
         for(auto it = triangles.begin(); it != triangles.end(); it++)
 //        {
             (*it)->addFlag(FlagType::TO_BE_REMOVED);
-//            std::cout << "T" << tid << "=[" << std::endl;
-//            std::cout << (*it)->getV1()->getX() << " " << (*it)->getV1()->getY() << std::endl;
-//            std::cout << (*it)->getV2()->getX() << " " << (*it)->getV2()->getY() << std::endl;
-//            std::cout << (*it)->getV3()->getX() << " " << (*it)->getV3()->getY() << std::endl;
-//            std::cout << (*it)->getV1()->getX() << " " << (*it)->getV1()->getY() << std::endl;
-//            std::cout << "];" << std::endl;
-//            std::cout << "plot(T" << tid << "(:,1), T" << tid << "(:,2));" << std::endl;
-//            std::cout << "labels=[" << (*it)->getV1()->getId() << " " <<
-//                                       (*it)->getV2()->getId() << " " <<
-//                                       (*it)->getV3()->getId() << " " <<
-//                                       (*it)->getV1()->getId() << "];" << std::endl;
-//            std::cout << "labels=strsplit(num2str(labels));" << std::endl;
-//            std::cout << "text(T" << tid << "(:,1), T" << tid++ << "(:,2), labels);" << std::endl;
 //        }
-        //triangles.clear();
 
         std::vector<std::vector<std::shared_ptr<Vertex> > > cloned_outlines;
         std::map<uint, std::vector<std::shared_ptr<Edge> > > vertices_edges;
@@ -3648,10 +3270,10 @@ int CityGMLCore::buildLevel1() {
                 vertices_edges.at(stoi(v3->getId())).push_back(e5);
                 vertices_edges.at(stoi(v4->getId())).push_back(e4);
                 vertices_edges.at(stoi(v4->getId())).push_back(e5);
-
             }
 
         }
+
 
         TriHelper::TriangleHelper helper(points, polylines, holes, false);
         std::vector<double*> generated_points = helper.getAddedPoints();
@@ -3720,10 +3342,8 @@ int CityGMLCore::buildLevel1() {
                 e1->setId(std::to_string(meshes[1]->getEdgesNumber()));
                 vertices_edges[stoi(v1->getId())].push_back(e1);
                 vertices_edges[stoi(v2->getId())].push_back(e1);
-                if(v1->getE0() == nullptr)
-                    v1->setE0(e1);
-                if(v2->getE0() == nullptr)
-                    v2->setE0(e1);
+                v1->setE0(e1);
+                v2->setE0(e1);
             }
             std::shared_ptr<Edge> e2 = searchEdgeContainingVertex(v2,v3);
             if(e2 == nullptr)
@@ -3732,10 +3352,8 @@ int CityGMLCore::buildLevel1() {
                 e2->setId(std::to_string(meshes[1]->getEdgesNumber()));
                 vertices_edges[stoi(v2->getId())].push_back(e2);
                 vertices_edges[stoi(v3->getId())].push_back(e2);
-                if(v2->getE0() == nullptr)
-                    v2->setE0(e2);
-                if(v3->getE0() == nullptr)
-                    v3->setE0(e2);
+                v2->setE0(e2);
+                v3->setE0(e2);
             }
             std::shared_ptr<Edge> e3 = searchEdgeContainingVertex(v3, v1);
             if(e3 == nullptr)
@@ -3744,10 +3362,8 @@ int CityGMLCore::buildLevel1() {
                 e3->setId(std::to_string(meshes[1]->getEdgesNumber()));
                 vertices_edges[stoi(v3->getId())].push_back(e3);
                 vertices_edges[stoi(v1->getId())].push_back(e3);
-                if(v3->getE0() == nullptr)
-                    v3->setE0(e3);
-                if(v1->getE0() == nullptr)
-                    v1->setE0(e3);
+                v3->setE0(e3);
+                v1->setE0(e3);
             }
 
             std::shared_ptr<Triangle> t = meshes[1]->addNewTriangle(e1, e2, e3);
@@ -3785,12 +3401,14 @@ int CityGMLCore::buildLevel1() {
                 exit(123);
             }
 
+
+
         }
 //        tid = 0;
 //        std::cout << "figure; hold all;" << std::endl;
         for(auto it = triangles.begin(); it != triangles.end(); it++)
         {
-//            (*it)->addFlag(FlagType::TO_BE_REMOVED);
+            (*it)->addFlag(FlagType::TO_BE_REMOVED);
 //            std::cout << "T" << tid << "=[" << std::endl;
 //            std::static_pointer_cast<Point>((*it)->getV1())->print(std::cout, BracketsType::NONE, " ");
 //            std::static_pointer_cast<Point>((*it)->getV2())->print(std::cout, BracketsType::NONE, " ");
@@ -3804,25 +3422,13 @@ int CityGMLCore::buildLevel1() {
 //                                       (*it)->getV1()->getId() << "];" << std::endl;
 //            std::cout << "labels=strsplit(num2str(labels));" << std::endl;
 //            std::cout << "text(T" << tid << "(:,1), T" << tid++ << "(:,2), labels);" << std::endl;
-            meshes[1]->removeTriangle((*it)->getId());
+//            meshes[1]->removeTriangle((*it)->getId());
         }
-
 
 //        meshes[1]->save(std::to_string(i).append(".ply"), 15);
     }
-    //meshes[1]->removeFlaggedTriangles();
-//    for(uint i = 0; i < meshes[1]->getTrianglesNumber(); i++)
-//    {
-//        auto t = meshes[1]->getTriangle(i);
-//        if( t->searchFlag(FlagType::TO_BE_REMOVED) >= 0)
-//        {
-//            t->getE1()->setTriangle(t, nullptr);
-//            t->getE2()->setTriangle(t, nullptr);
-//            t->getE3()->setTriangle(t, nullptr);
-//            meshes[1]->removeTriangle(t->getId());
-//            i--;
-//        }
-//    }
+
+    meshes[1]->removeFlaggedTriangles();
     meshes[1]->removeIsolatedVertices();
     for(uint i = 0; i < meshes[1]->getVerticesNumber(); i++)
         meshes[1]->getVertex(i)->setId(std::to_string(i));
@@ -3865,6 +3471,9 @@ void CityGMLCore::setLevel0(std::string meshFileName, std::string annotationFile
     AnnotationFileManager manager;
     manager.setMesh(this->meshes[0]);
     manager.readAnnotations(annotationFileName);
+
+    uint counter = 0;
+    std::ofstream stream("buidlings.m");
     for(auto annotation : meshes[0]->getAnnotations())
     {
         auto tag = annotation->getTag();
@@ -3878,7 +3487,7 @@ void CityGMLCore::setLevel0(std::string meshFileName, std::string annotationFile
             buildings.push_back(building);
         }
     }
-    pixelToBuildingAssociation = extractBuildingsHeights(true);
+    //pixelToBuildingAssociation = extractBuildingsHeights(true);
 }
 
 void CityGMLCore::setLevel1(std::string meshFileName, std::string annotationFileName)

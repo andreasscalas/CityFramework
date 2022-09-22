@@ -50,6 +50,8 @@ public:
     bool isPointInside(Point p);
     double squaredDistanceFromPoint(Point p) const;
     double computeDistanceFromPoint(Point p, Point *c = nullptr);
+    bool isCoherentlyOriented(std::shared_ptr<Triangle> t);
+    void orient();
 
 
     bool addFlag(FlagType);

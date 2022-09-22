@@ -19,7 +19,7 @@ class CityGMLCore
 {
 public:
     CityGMLCore();
-    CityGMLCore(std::string, std::string, std::string, std::string lidarFilename);
+    CityGMLCore(std::string, std::string, std::string, std::string lidarFilename, std::string);
 
     int buildLevel(uint level = 0);
 
@@ -86,6 +86,8 @@ public:
 
     VertexList createLiDARDTMVertices();
     void removeAlreadyExistingPoints(std::vector<std::vector<VertexList> > boundaries, std::vector<VertexList > arcs);
+    bool isPointOutsideBounds(const std::shared_ptr<Point> p);
+
 private:
     std::string osmFilename, dtmFilename, dsmFilename;
     //Lists of entities loaded from the OSM file
@@ -96,7 +98,8 @@ private:
     std::vector<std::string> buildingsArcs;
     std::vector<std::string> streetsArcs;
     std::vector<std::shared_ptr<Building> > buildings;
-    std::vector<std::vector<std::pair<uint, uint> > > pixelToBuildingAssociation;
+    std::vector<std::vector<std::shared_ptr<Point> > >  bounds;
+    //std::vector<std::vector<std::pair<uint, uint> > > pixelToBuildingAssociation;
 
     std::shared_ptr<TriangleMesh> meshes[5];
 

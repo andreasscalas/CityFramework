@@ -51,6 +51,7 @@ public:
     std::shared_ptr<Annotation> getAnnotation(unsigned int);
     bool removeAnnotation(unsigned int);
 
+    void orientTrianglesCoherently();
 
 
 protected:
