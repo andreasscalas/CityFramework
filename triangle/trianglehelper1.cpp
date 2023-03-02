@@ -162,7 +162,7 @@ void TriangleHelper::launchTriangle(){
 //    }
 
     nodes_file.close();
-    exec("rm -r ./polyin.1.node");
+    //exec("rm -r ./polyin.1.node");
     std::ifstream triangulation_file("polyin.1.ele");
     if(triangulation_file.is_open())
     {
@@ -192,8 +192,8 @@ void TriangleHelper::launchTriangle(){
         }
     }
     triangulation_file.close();
-    exec("rm -r ./polyin.1.ele");
-    exec("rm -r ./polyin.1.poly");
+    //exec("rm -r ./polyin.1.ele");
+    //exec("rm -r ./polyin.1.poly");
 
     return;
 //    triangulateio in, out;

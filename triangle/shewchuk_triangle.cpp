@@ -312,7 +312,9 @@
 /*   compiler is smarter, feel free to replace the "int" with "void".        */
 /*   Not that it matters.                                                    */
 
+#ifndef VOID
 #define VOID int
+#endif
 
 /* Two constants for algorithms based on random sampling.  Both constants    */
 /*   have been chosen empirically to optimize their respective algorithms.   */

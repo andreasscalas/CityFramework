@@ -3,6 +3,7 @@
 #include <map>
 #include <algorithm>
 
+using namespace SemantisedTriangleMesh;
 typedef unsigned int uint;
 
 Building::Building()

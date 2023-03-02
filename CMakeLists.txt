@@ -5,158 +5,321 @@ project(CityDigitalTwin LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O0")
-find_package(OpenMP)
 find_library(SHAPELIB shp Shp)
 find_path(SHAPELIB_H shapelib)
-find_package( GDAL )
+find_package(GDAL CONFIG REQUIRED)
 find_package(RapidJSON)
 find_path(RAPIDJSON_H rapidjson-master/include/)
-find_path(TINYXML_H tinyxml2 )
-find_library(TINYXML_LIB libtinyxml2)
 find_path(DATA_STRUCTURES_H DataStructures )
 find_library(DATA_STRUCTURES_LIB libDataStructures)
 find_package(PROJ)
 find_package(libLAS REQUIRED)
+find_package(GeoJSONParser REQUIRED)
+find_package(SemantisedTriangleMesh REQUIRED)
+find_package(OSMManager REQUIRED)
 
+if(NOT SemantisedTriangleMesh_FOUND)
+    message(SEND_ERROR "The SemantisedTriangleMesh library is required")
+endif()
 
-if ( NOT GDAL_FOUND )
+if(NOT GDAL_FOUND )
   message(SEND_ERROR "The GDAL library is required")
 endif()
 
 set( MAIN_FOLDER ${CMAKE_SOURCE_DIR})
-set( TRIANGLE_MESH ${MAIN_FOLDER}/triangle_mesh/ )
-set( TRIANGLE ${MAIN_FOLDER}/triangle/ )
 set( KDTree ${MAIN_FOLDER}/KDTree/)
+add_subdirectory(${KDTree})
 set( NANOFLANN ${MAIN_FOLDER}/nanoflann/include)
 
-file(GLOB IO_srcs "${MAIN_FOLDER}/include/*.h*" "${MAIN_FOLDER}/IO/*.c*")
-file(GLOB Srcs "${MAIN_FOLDER}/src/*.c*")
-file(GLOB Hdrs "${MAIN_FOLDER}/include/*.h")
-add_subdirectory(${TRIANGLE_MESH})
-add_subdirectory(${TRIANGLE})
-set(AS_LIBRARY true)
-add_subdirectory(${KDTree})
-
-#Adding Extruder executable and dependencies
-list(REMOVE_ITEM Srcs
-    "${MAIN_FOLDER}/src/test_in_polygon.cpp"
-    "${MAIN_FOLDER}/src/visualise_city.cpp"
-    "${MAIN_FOLDER}/src/test.cpp"
-    "${MAIN_FOLDER}/src/compute_slopes.cpp"
-    "${MAIN_FOLDER}/src/create_itinerary.cpp"
+set(ExtruderHdrs
+    ${MAIN_FOLDER}/include/annotationfilemanager.h
+    ${MAIN_FOLDER}/include/building.h
+    ${MAIN_FOLDER}/include/buildingsgroup.h
+    ${MAIN_FOLDER}/include/citygmlcore.h
+    ${MAIN_FOLDER}/include/coordsconverter.h
+    ${MAIN_FOLDER}/include/geotiff.h
+    ${MAIN_FOLDER}/include/utilities.h
 )
 
+set(ExtruderSrcs
+    ${MAIN_FOLDER}/src/annotationfilemanager.cpp
+    ${MAIN_FOLDER}/src/building.cpp
+    ${MAIN_FOLDER}/src/buildingsgroup.cpp
+    ${MAIN_FOLDER}/src/citygmlcore.cpp
+    ${MAIN_FOLDER}/src/coordsconverter.cpp
+    ${MAIN_FOLDER}/src/geotiff.cpp
+    ${MAIN_FOLDER}/src/main.cpp
+    ${MAIN_FOLDER}/src/utilities.cpp
+)
 
-include_directories(Extruder
+add_executable(Extruder ${ExtruderSrcs} ${ExtruderHdrs} )
+target_include_directories(Extruder PRIVATE
     ${MAIN_FOLDER}/include/
-    ${MAIN_FOLDER}/prepair/
     ${SHAPELIB_H}
-    ${GDAL_INCLUDE_DIR}
     ${Boost_INCLUDE_DIR}
-    ${TRIANGLE}
-    ${TRIANGLE_MESH}/include
     ${RAPIDJSON_H}
     ${PROJ_INCLUDE_DIRS}
     ${NANOFLANN}
     ${KDTree}
     ${DATA_STRUCTURES_H}
+    ${GeoJSONParser_INCLUDE_DIRS}
+    ${SemantisedTriangleMesh_INCLUDE_DIRS}
+    ${OSMManager_INCLUDE_DIRS}
 )
 
-add_executable(Extruder ${IO_srcs} ${Srcs} ${Hdrs} )
-target_link_libraries(Extruder ${SHAPELIB} TriangleMesh-lib Triangle-lib OpenMP::OpenMP_CXX ${GDAL_LIBRARY} ${TINYXML_LIB} ${libLAS_LIBRARIES} ${PROJ_LIBRARIES} KDTree ${DATA_STRUCTURES_LIB})
-
+target_link_libraries(Extruder
+    ${SHAPELIB}
+    GDAL::GDAL
+    ${libLAS_LIBRARIES}
+    ${PROJ_LIBRARIES}
+    KDTree
+    ${DATA_STRUCTURES_LIB}
+    ${GeoJSONParser_LIBRARIES}
+    ${SemantisedTriangleMesh_LIBRARIES}
+    ${OSMManager_LIBRARIES})
 
 #Adding TestInPolygon executable and dependencies
-file(GLOB TestInPolygonSrcs "${MAIN_FOLDER}/src/*.c*")
-list(REMOVE_ITEM TestInPolygonSrcs
-    "${MAIN_FOLDER}/src/main.cpp"
-    "${MAIN_FOLDER}/src/visualise_city.cpp"
-    "${MAIN_FOLDER}/src/test.cpp"
-    "${MAIN_FOLDER}/src/compute_slopes.cpp"
-    "${MAIN_FOLDER}/src/create_itinerary.cpp"
+
+set(TestInPolygonHdrs
+    ${MAIN_FOLDER}/include/annotationfilemanager.h
+    ${MAIN_FOLDER}/include/coordsconverter.h
+    ${MAIN_FOLDER}/include/geotiff.h
+    ${MAIN_FOLDER}/include/utilities.h
 )
-add_executable(TestInPolygon ${IO_srcs} ${TestInPolygonSrcs} ${Hdrs} )
-target_link_libraries(TestInPolygon ${SHAPELIB} TriangleMesh-lib Triangle-lib OpenMP::OpenMP_CXX ${GDAL_LIBRARY} ${TINYXML_LIB} ${libLAS_LIBRARIES} ${PROJ_LIBRARIES} KDTree ${DATA_STRUCTURES_LIB})
-#target_include_directories(TestInPolygon PRIVATE
-#    ${MAIN_FOLDER}/include/
-#    ${MAIN_FOLDER}/prepair/
-#    ${SHAPELIB_H}
-#    ${GDAL_INCLUDE_DIR}
-#    ${Boost_INCLUDE_DIR}
-#    ${TRIANGLE}
-#    ${TRIANGLE_MESH}/include
-#    ${RAPIDJSON_H}
-#    ${PROJ_INCLUDE_DIRS}
-#    ${NANOFLANN}
-#    ${KDTree}
-#    ${DATA_STRUCTURES_H}
-#)
+
+set(TestInPolygonSrcs
+    ${MAIN_FOLDER}/src/annotationfilemanager.cpp
+    ${MAIN_FOLDER}/src/coordsconverter.cpp
+    ${MAIN_FOLDER}/src/geotiff.cpp
+    ${MAIN_FOLDER}/src/test_in_polygon.cpp
+    ${MAIN_FOLDER}/src/utilities.cpp
+)
+
+add_executable(TestInPolygon ${TestInPolygonSrcs} ${TestInPolygonHdrs} )
+target_include_directories(TestInPolygon PRIVATE
+    ${MAIN_FOLDER}/include/
+    ${MAIN_FOLDER}/prepair/
+    ${SHAPELIB_H}
+    ${Boost_INCLUDE_DIR}
+    ${RAPIDJSON_H}
+    ${PROJ_INCLUDE_DIRS}
+    ${NANOFLANN}
+    ${KDTree}
+    ${DATA_STRUCTURES_H}
+    ${GeoJSONParser_INCLUDE_DIRS}
+    ${SemantisedTriangleMesh_INCLUDE_DIRS}
+    ${OSMManager_INCLUDE_DIRS}
+)
+target_link_libraries(TestInPolygon ${SHAPELIB} ${SemantisedTriangleMesh_LIBRARIES} GDAL::GDAL ${libLAS_LIBRARIES} ${PROJ_LIBRARIES} KDTree ${DATA_STRUCTURES_LIB} ${GeoJSONParser_LIBRARIES} ${SemantisedTriangleMesh_LIBRARIES} ${OSMManager_LIBRARIES})
 
 #Adding Test executable and dependencies
-file(GLOB TestSrcs "${MAIN_FOLDER}/src/*.c*")
-list(REMOVE_ITEM TestSrcs
-    "${MAIN_FOLDER}/src/main.cpp"
-    "${MAIN_FOLDER}/src/test_in_polygon.cpp"
-    "${MAIN_FOLDER}/src/visualise_city.cpp"
-    "${MAIN_FOLDER}/src/compute_slopes.cpp"
-    "${MAIN_FOLDER}/src/create_itinerary.cpp"
+
+set(TestHdrs
+    ${MAIN_FOLDER}/include/annotationfilemanager.h
+    ${MAIN_FOLDER}/include/building.h
+    ${MAIN_FOLDER}/include/buildingsgroup.h
+    ${MAIN_FOLDER}/include/citygmlcore.h
+    ${MAIN_FOLDER}/include/coordsconverter.h
+    ${MAIN_FOLDER}/include/geotiff.h
+    ${MAIN_FOLDER}/include/utilities.h
 )
-add_executable(Test ${IO_srcs} ${TestSrcs} ${Hdrs} )
-target_link_libraries(Test ${SHAPELIB} TriangleMesh-lib Triangle-lib OpenMP::OpenMP_CXX ${GDAL_LIBRARY} ${TINYXML_LIB} ${libLAS_LIBRARIES} ${PROJ_LIBRARIES} KDTree ${DATA_STRUCTURES_LIB})
-#target_include_directories(Test PRIVATE
-#    ${MAIN_FOLDER}/include/
-#    ${MAIN_FOLDER}/prepair/
-#    ${SHAPELIB_H}
-#    ${GDAL_INCLUDE_DIR}
-#    ${Boost_INCLUDE_DIR}
-#    ${TRIANGLE}
-#    ${TRIANGLE_MESH}/include
-#    ${RAPIDJSON_H}
-#    ${PROJ_INCLUDE_DIRS}
-#    ${NANOFLANN}
-#    ${KDTree}
-#    ${DATA_STRUCTURES_H}
-#)
+
+set(TestSrcs
+    ${MAIN_FOLDER}/src/annotationfilemanager.cpp
+    ${MAIN_FOLDER}/src/building.cpp
+    ${MAIN_FOLDER}/src/buildingsgroup.cpp
+    ${MAIN_FOLDER}/src/citygmlcore.cpp
+    ${MAIN_FOLDER}/src/coordsconverter.cpp
+    ${MAIN_FOLDER}/src/geotiff.cpp
+    ${MAIN_FOLDER}/src/test.cpp
+    ${MAIN_FOLDER}/src/utilities.cpp
+)
+
+add_executable(Test ${TestSrcs} ${TestHdrs} )
+
+target_include_directories(Test PRIVATE
+    ${MAIN_FOLDER}/include/
+    ${MAIN_FOLDER}/prepair/
+    ${SHAPELIB_H}
+    ${Boost_INCLUDE_DIR}
+    ${RAPIDJSON_H}
+    ${PROJ_INCLUDE_DIRS}
+    ${NANOFLANN}
+    ${KDTree}
+    ${DATA_STRUCTURES_H}
+    ${GeoJSONParser_INCLUDE_DIRS}
+    ${SemantisedTriangleMesh_INCLUDE_DIRS}
+    ${OSMManager_INCLUDE_DIRS}
+)
+target_link_libraries(Test ${SHAPELIB} GDAL::GDAL ${libLAS_LIBRARIES} ${PROJ_LIBRARIES} KDTree ${DATA_STRUCTURES_LIB} ${GeoJSONParser_LIBRARIES} ${SemantisedTriangleMesh_LIBRARIES} ${OSMManager_LIBRARIES})
+
+
+
+#Adding BuildLOD2Building executable and dependencies
+
+set(BuildLOD2BuildingHdrs
+    ${MAIN_FOLDER}/include/annotationfilemanager.h
+    ${MAIN_FOLDER}/include/building.h
+    ${MAIN_FOLDER}/include/buildingsgroup.h
+    ${MAIN_FOLDER}/include/citygmlcore.h
+    ${MAIN_FOLDER}/include/coordsconverter.h
+    ${MAIN_FOLDER}/include/geotiff.h
+    ${MAIN_FOLDER}/include/utilities.h
+)
+
+set(BuildLOD2BuildingSrcs
+    ${MAIN_FOLDER}/src/annotationfilemanager.cpp
+    ${MAIN_FOLDER}/src/building.cpp
+    ${MAIN_FOLDER}/src/buildingsgroup.cpp
+    ${MAIN_FOLDER}/src/citygmlcore.cpp
+    ${MAIN_FOLDER}/src/coordsconverter.cpp
+    ${MAIN_FOLDER}/src/geotiff.cpp
+    ${MAIN_FOLDER}/src/buildlod2building.cpp
+    ${MAIN_FOLDER}/src/utilities.cpp
+)
+
+add_executable(BuildLOD2Building ${BuildLOD2BuildingSrcs} ${BuildLOD2BuildingHdrs} )
+
+target_include_directories(BuildLOD2Building PRIVATE
+    ${MAIN_FOLDER}/include/
+    ${MAIN_FOLDER}/prepair/
+    ${SHAPELIB_H}
+    ${Boost_INCLUDE_DIR}
+    ${RAPIDJSON_H}
+    ${PROJ_INCLUDE_DIRS}
+    ${NANOFLANN}
+    ${KDTree}
+    ${DATA_STRUCTURES_H}
+    ${GeoJSONParser_INCLUDE_DIRS}
+    ${SemantisedTriangleMesh_INCLUDE_DIRS}
+    ${OSMManager_INCLUDE_DIRS}
+)
+
+target_link_libraries(BuildLOD2Building ${SHAPELIB} GDAL::GDAL ${libLAS_LIBRARIES} ${PROJ_LIBRARIES} KDTree ${DATA_STRUCTURES_LIB} ${GeoJSONParser_LIBRARIES} ${SemantisedTriangleMesh_LIBRARIES} ${OSMManager_LIBRARIES})
+
 
 #Adding ComputeSlopes executable and dependencies
-file(GLOB ComputeSlopesSrcs "${MAIN_FOLDER}/src/*.c*")
-list(REMOVE_ITEM ComputeSlopesSrcs
-    "${MAIN_FOLDER}/src/main.cpp"
-    "${MAIN_FOLDER}/src/test.cpp"
-    "${MAIN_FOLDER}/src/test_in_polygon.cpp"
-    "${MAIN_FOLDER}/src/visualise_city.cpp"
-    "${MAIN_FOLDER}/src/create_itinerary.cpp"
+set(ComputeSlopesHdrs
+    ${MAIN_FOLDER}/include/annotationfilemanager.h
+    ${MAIN_FOLDER}/include/building.h
+    ${MAIN_FOLDER}/include/buildingsgroup.h
+    ${MAIN_FOLDER}/include/citygmlcore.h
+    ${MAIN_FOLDER}/include/coordsconverter.h
+    ${MAIN_FOLDER}/include/geotiff.h
+    ${MAIN_FOLDER}/include/utilities.h
 )
-add_executable(ComputeSlopes ${IO_srcs} ${ComputeSlopesSrcs} ${Hdrs} )
-target_link_libraries(ComputeSlopes ${SHAPELIB} TriangleMesh-lib Triangle-lib OpenMP::OpenMP_CXX ${GDAL_LIBRARY} ${TINYXML_LIB} ${libLAS_LIBRARIES} ${PROJ_LIBRARIES} KDTree ${DATA_STRUCTURES_LIB})
+
+set(ComputeSlopesSrcs
+    ${MAIN_FOLDER}/src/annotationfilemanager.cpp
+    ${MAIN_FOLDER}/src/building.cpp
+    ${MAIN_FOLDER}/src/buildingsgroup.cpp
+    ${MAIN_FOLDER}/src/citygmlcore.cpp
+    ${MAIN_FOLDER}/src/coordsconverter.cpp
+    ${MAIN_FOLDER}/src/geotiff.cpp
+    ${MAIN_FOLDER}/src/compute_slopes.cpp
+    ${MAIN_FOLDER}/src/utilities.cpp
+)
+#set(ComputeSlopesSrcs
+#    ${MAIN_FOLDER}/src/annotationfilemanager.cpp
+#    ${MAIN_FOLDER}/src/compute_slopes.cpp
+#    ${MAIN_FOLDER}/src/geotiff.cpp
+#    ${MAIN_FOLDER}/src/utilities.cpp)
+#set(ComputeSlopesHdrs
+#    ${MAIN_FOLDER}/include/annotationfilemanager.h
+#    ${MAIN_FOLDER}/include/geotiff.h
+#    ${MAIN_FOLDER}/include/utilities.h)
+
+add_executable(ComputeSlopes ${ComputeSlopesSrcs} ${ComputeSlopesHdrs} )
+target_include_directories(ComputeSlopes PRIVATE
+    ${MAIN_FOLDER}/include/
+    ${MAIN_FOLDER}/prepair/
+    ${SHAPELIB_H}
+    ${RAPIDJSON_H}
+    ${PROJ_INCLUDE_DIRS}
+    ${KDTree}
+    ${DATA_STRUCTURES_H}
+    ${SemantisedTriangleMesh_INCLUDE_DIRS}
+    ${OSMManager_INCLUDE_DIRS}
+)
+target_link_libraries(ComputeSlopes ${SHAPELIB} GDAL::GDAL ${libLAS_LIBRARIES} ${PROJ_LIBRARIES} KDTree ${DATA_STRUCTURES_LIB} ${GeoJSONParser_LIBRARIES} ${SemantisedTriangleMesh_LIBRARIES} ${OSMManager_LIBRARIES})
+#target_link_libraries(ComputeSlopes GDAL::GDAL ${TINYXML_LIB} ${PROJ_LIBRARIES} KDTree ${DATA_STRUCTURES_LIB}  ${SemantisedTriangleMesh_LIBRARIES} ${OSMManager_LIBRARIES})
 
 #Adding CreateItinerary executable and dependencies
-file(GLOB CreateItinerarySrcs "${MAIN_FOLDER}/src/*.c*")
-list(REMOVE_ITEM CreateItinerarySrcs
-    "${MAIN_FOLDER}/src/main.cpp"
-    "${MAIN_FOLDER}/src/test.cpp"
-    "${MAIN_FOLDER}/src/test_in_polygon.cpp"
-    "${MAIN_FOLDER}/src/visualise_city.cpp"
-    "${MAIN_FOLDER}/src/compute_slopes.cpp"
+set(CreateItineraryHdrs
+    ${MAIN_FOLDER}/include/annotationfilemanager.h
+    ${MAIN_FOLDER}/include/building.h
+    ${MAIN_FOLDER}/include/buildingsgroup.h
+    ${MAIN_FOLDER}/include/citygmlcore.h
+    ${MAIN_FOLDER}/include/coordsconverter.h
+    ${MAIN_FOLDER}/include/geotiff.h
+    ${MAIN_FOLDER}/include/utilities.h
 )
-add_executable(CreateItinerary ${IO_srcs} ${CreateItinerarySrcs} ${Hdrs} )
-target_link_libraries(CreateItinerary ${SHAPELIB} TriangleMesh-lib Triangle-lib OpenMP::OpenMP_CXX ${GDAL_LIBRARY} ${TINYXML_LIB} ${libLAS_LIBRARIES} ${PROJ_LIBRARIES} KDTree ${DATA_STRUCTURES_LIB})
-#target_include_directories(ComputeSlopes PRIVATE
-#    ${MAIN_FOLDER}/include/
-#    ${MAIN_FOLDER}/prepair/
-#    ${SHAPELIB_H}
-#    ${GDAL_INCLUDE_DIR}
-#    ${Boost_INCLUDE_DIR}
-#    ${TRIANGLE}
-#    ${TRIANGLE_MESH}/include
-#    ${RAPIDJSON_H}
-#    ${PROJ_INCLUDE_DIRS}
-#    ${NANOFLANN}
-#    ${KDTree}
-#    ${DATA_STRUCTURES_H}
-#)
 
-#Adding VisualiseCity executable and dependencies
+set(CreateItinerarySrcs
+    ${MAIN_FOLDER}/src/annotationfilemanager.cpp
+    ${MAIN_FOLDER}/src/building.cpp
+    ${MAIN_FOLDER}/src/buildingsgroup.cpp
+    ${MAIN_FOLDER}/src/citygmlcore.cpp
+    ${MAIN_FOLDER}/src/coordsconverter.cpp
+    ${MAIN_FOLDER}/src/geotiff.cpp
+    ${MAIN_FOLDER}/src/create_itinerary.cpp
+    ${MAIN_FOLDER}/src/utilities.cpp
+)
+
+add_executable(CreateItinerary ${CreateItinerarySrcs} ${CreateItineraryHdrs} )
+target_include_directories(CreateItinerary PRIVATE
+    ${MAIN_FOLDER}/include/
+    ${MAIN_FOLDER}/prepair/
+    ${SHAPELIB_H}
+    ${Boost_INCLUDE_DIR}
+    ${RAPIDJSON_H}
+    ${PROJ_INCLUDE_DIRS}
+    ${NANOFLANN}
+    ${KDTree}
+    ${DATA_STRUCTURES_H}
+    ${GeoJSONParser_INCLUDE_DIRS}
+    ${SemantisedTriangleMesh_INCLUDE_DIRS}
+    ${OSMManager_INCLUDE_DIRS}
+)
+target_link_libraries(CreateItinerary ${SHAPELIB} ${SemantisedTriangleMesh_LIBRARIES} GDAL::GDAL ${libLAS_LIBRARIES} ${PROJ_LIBRARIES} KDTree ${DATA_STRUCTURES_LIB} ${GeoJSONParser_LIBRARIES} ${SemantisedTriangleMesh_LIBRARIES} ${OSMManager_LIBRARIES})
+
+set(TerrainTriangulationHdrs
+    ${MAIN_FOLDER}/include/annotationfilemanager.h
+    ${MAIN_FOLDER}/include/building.h
+    ${MAIN_FOLDER}/include/buildingsgroup.h
+    ${MAIN_FOLDER}/include/citygmlcore.h
+    ${MAIN_FOLDER}/include/coordsconverter.h
+    ${MAIN_FOLDER}/include/geotiff.h
+    ${MAIN_FOLDER}/include/utilities.h
+)
+
+set(TerrainTriangulationSrcs
+    ${MAIN_FOLDER}/src/annotationfilemanager.cpp
+    ${MAIN_FOLDER}/src/building.cpp
+    ${MAIN_FOLDER}/src/buildingsgroup.cpp
+    ${MAIN_FOLDER}/src/citygmlcore.cpp
+    ${MAIN_FOLDER}/src/coordsconverter.cpp
+    ${MAIN_FOLDER}/src/geotiff.cpp
+    ${MAIN_FOLDER}/src/triangulateTerrain.cpp
+    ${MAIN_FOLDER}/src/utilities.cpp
+)
+
+add_executable(TerrainTriangulation ${TerrainTriangulationSrcs} ${TerrainTriangulationHdrs} )
+target_include_directories(TerrainTriangulation PRIVATE
+    ${MAIN_FOLDER}/include/
+    ${MAIN_FOLDER}/prepair/
+    ${SHAPELIB_H}
+    ${Boost_INCLUDE_DIR}
+    ${RAPIDJSON_H}
+    ${PROJ_INCLUDE_DIRS}
+    ${NANOFLANN}
+    ${KDTree}
+    ${DATA_STRUCTURES_H}
+    ${GeoJSONParser_INCLUDE_DIRS}
+    ${SemantisedTriangleMesh_INCLUDE_DIRS}
+    ${OSMManager_INCLUDE_DIRS}
+)
+target_link_libraries(TerrainTriangulation ${SHAPELIB} GDAL::GDAL ${libLAS_LIBRARIES} ${PROJ_LIBRARIES} KDTree ${DATA_STRUCTURES_LIB} ${SemantisedTriangleMesh_LIBRARIES} ${OSMManager_LIBRARIES})
 
 find_package(VTK COMPONENTS
     vtkCommonCore
@@ -169,29 +332,43 @@ find_package(VTK COMPONENTS
 if(VTK_FOUND)
 
     include_directories(SYSTEM ${VTK_INCLUDE_DIRS})
-    file(GLOB VisualiseCitySrcs "${MAIN_FOLDER}/src/*.c*")
-    list(REMOVE_ITEM VisualiseCitySrcs
-        "${MAIN_FOLDER}/src/main.cpp"
-        "${MAIN_FOLDER}/src/test_in_polygon.cpp"
-        "${MAIN_FOLDER}/src/test.cpp"
-        "${MAIN_FOLDER}/src/compute_slopes.cpp"
-        "${MAIN_FOLDER}/src/create_itinerary.cpp"
+
+    set(VisualiseCityHdrs
+        ${MAIN_FOLDER}/include/annotationfilemanager.h
+        ${MAIN_FOLDER}/include/building.h
+        ${MAIN_FOLDER}/include/buildingsgroup.h
+        ${MAIN_FOLDER}/include/citygmlcore.h
+        ${MAIN_FOLDER}/include/coordsconverter.h
+        ${MAIN_FOLDER}/include/geotiff.h
+        ${MAIN_FOLDER}/include/utilities.h
     )
-    add_executable(VisualiseCity ${IO_srcs} ${VisualiseCitySrcs} ${Hdrs} )
-    target_link_libraries(VisualiseCity ${SHAPELIB} TriangleMesh-lib Triangle-lib OpenMP::OpenMP_CXX ${GDAL_LIBRARY} ${TINYXML_LIB} ${libLAS_LIBRARIES} ${PROJ_LIBRARIES} ${VTK_LIBRARIES} KDTree ${DATA_STRUCTURES_LIB})
-#    target_include_directories(VisualiseCity PRIVATE
-#        ${MAIN_FOLDER}/include/
-#        ${MAIN_FOLDER}/prepair/
-#        ${SHAPELIB_H}
-#        ${GDAL_INCLUDE_DIR}
-#        ${Boost_INCLUDE_DIR}
-#        ${TRIANGLE}
-#        ${TRIANGLE_MESH}/include
-#        ${RAPIDJSON_H}
-#        ${TINYXML_H}
-#        ${PROJ_INCLUDE_DIRS}
-#        ${NANOFLANN}
-#        ${KDTree}
-#        ${DATA_STRUCTURES_H}
-#    )
+
+    set(VisualiseCitySrcs
+        ${MAIN_FOLDER}/src/annotationfilemanager.cpp
+        ${MAIN_FOLDER}/src/building.cpp
+        ${MAIN_FOLDER}/src/buildingsgroup.cpp
+        ${MAIN_FOLDER}/src/citygmlcore.cpp
+        ${MAIN_FOLDER}/src/coordsconverter.cpp
+        ${MAIN_FOLDER}/src/geotiff.cpp
+        ${MAIN_FOLDER}/src/visualise_city.cpp
+        ${MAIN_FOLDER}/src/utilities.cpp
+    )
+
+
+    add_executable(VisualiseCity ${VisualiseCitySrcs} ${VisualiseCityHdrs} )
+    target_include_directories(VisualiseCity PRIVATE
+        ${MAIN_FOLDER}/include/
+        ${MAIN_FOLDER}/prepair/
+        ${SHAPELIB_H}
+        ${Boost_INCLUDE_DIR}
+        ${RAPIDJSON_H}
+        ${PROJ_INCLUDE_DIRS}
+        ${NANOFLANN}
+        ${KDTree}
+        ${DATA_STRUCTURES_H}
+        ${GeoJSONParser_INCLUDE_DIRS}
+        ${SemantisedTriangleMesh_INCLUDE_DIRS}
+        ${OSMManager_INCLUDE_DIRS}
+    )
+    target_link_libraries(VisualiseCity ${SHAPELIB} ${SemantisedTriangleMesh_LIBRARIES} GDAL::GDAL ${libLAS_LIBRARIES} ${PROJ_LIBRARIES} ${VTK_LIBRARIES} KDTree ${DATA_STRUCTURES_LIB} ${GeoJSONParser_LIBRARIES} ${SemantisedTriangleMesh_LIBRARIES} ${OSMManager_LIBRARIES})
 endif()

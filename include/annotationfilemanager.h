@@ -3,7 +3,7 @@
 
 #include <string>
 #include <iostream>
-#include <TriangleMesh.h>
+#include "TriangleMesh.h"
 
 class AnnotationFileManager
 {
@@ -13,13 +13,13 @@ public:
     AnnotationFileManager();
     bool writeAnnotations(std::string fileName);
     bool readAnnotations(std::string fileName);
-    std::vector<std::shared_ptr<Annotation> > readAndStoreAnnotations(std::string fileName);
+    std::vector<std::shared_ptr<SemantisedTriangleMesh::Annotation> > readAndStoreAnnotations(std::string fileName);
 
-    std::shared_ptr<TriangleMesh> getMesh() const;
-    void setMesh(std::shared_ptr<TriangleMesh>value);
+    std::shared_ptr<SemantisedTriangleMesh::TriangleMesh> getMesh() const;
+    void setMesh(std::shared_ptr<SemantisedTriangleMesh::TriangleMesh>value);
 
 private:
-    std::shared_ptr<TriangleMesh> mesh;
+    std::shared_ptr<SemantisedTriangleMesh::TriangleMesh> mesh;
 };
 
 #endif // ANNOTATIONFILEMANAGER_H

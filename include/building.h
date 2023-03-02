@@ -7,8 +7,8 @@
 #include "Point.h"
 #include "Vertex.h"
 
-typedef std::vector<std::shared_ptr<Point> >  PointList;
-typedef std::vector<std::shared_ptr<Vertex> >  VertexList;
+typedef std::vector<std::shared_ptr<SemantisedTriangleMesh::Point> >  PointList;
+typedef std::vector<std::shared_ptr<SemantisedTriangleMesh::Vertex> >  VertexList;
 
 /**
  * @brief The Building class is used to manage the buildings of the cities.

@@ -104,7 +104,9 @@ float **GeoTiff::GetRasterBand(int z) {
     float** bandLayer = new float*[NROWS];
     switch( GDALGetRasterDataType(geotiffDataset->GetRasterBand(z)) ) {
     case 0:
-        return NULL; // GDT_Unknown, or unknown data type.
+    {
+        break; // GDT_Unknown, or unknown data type.
+    }
     case 1:
         // GDAL GDT_Byte (-128 to 127) - unsigned  char
         return GetArray2D<unsigned char>(z,bandLayer);
@@ -129,5 +131,9 @@ float **GeoTiff::GetRasterBand(int z) {
     default:
         break;
     }
+
+    for(uint i = 0; i < NROWS; i++)
+        delete[] bandLayer[i];
+    delete[] bandLayer;
     return NULL;
 }

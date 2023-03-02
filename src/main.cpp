@@ -1,18 +1,6 @@
-#include <utilities.h>
-#include <trianglehelper.h>
-#include <Point.h>
-#include <TriangleMesh.h>
-#include <citygmlcore.h>
-
-#include <geotiff.h>
-#include <rapidjson/prettywriter.h>
-#include <tinyxml2.h>
-
-#include <annotationfilemanager.h>
+﻿#include "citygmlcore.h"
 #include <iostream>
-#include <map>
-#include <string>
-
+#include <chrono>
 using namespace std;
 const double OFFSET = 5e-3;
 
@@ -47,11 +35,13 @@ int main(int argc, char *argv[])
 
     CityGMLCore manager(argv[1], argv[2], argv[3], argv[4], argv[5]);
 
-    manager.setLevel(0,
-                     "/home/andreas/Documenti/Progetti/Extruder/build-minSizeRelease/level0.ply",
-                     "/home/andreas/Documenti/Progetti/Extruder/build-minSizeRelease/annotations.ant");
-//    manager.buildLevel(0);
+//    manager.setLevel(0,
+//                     "/home/andreas/Documenti/Progetti/Extruder/build-minSizeRelease/a/level0.ply",
+//                     "/home/andreas/Documenti/Progetti/Extruder/build-minSizeRelease/a/annotations.ant");
+    auto start = std::chrono::high_resolution_clock::now();
+    manager.buildLevel(0);
     manager.buildLevel(1);
+    auto end = std::chrono::high_resolution_clock::now();
 
 
     return 0;

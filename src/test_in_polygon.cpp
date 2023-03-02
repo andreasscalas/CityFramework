@@ -1,21 +1,23 @@
+#include "annotationfilemanager.h"
+#include "surfaceannotation.h"
+#include "coordsconverter.h"
+#include "utilities.h"
+#include "geotiff.h"
+
 #include <iostream>
-#include <utilities.h>
 #include <map>
 #include <string>
 #include <sstream>
-#include <trianglehelper.h>
-#include <Point.h>
-#include <geotiff.h>
-#include <annotationfilemanager.h>
-#include <surfaceannotation.h>
-#include <coordsconverter.h>
-#include <pointannotation.h>
-
-#include <document.h>
 #include <filereadstream.h>
 #include <iomanip>
+#include <fstream>
+
+#include <KDTree.hpp>
+#include <document.h>
+
 
 using namespace std;
+using namespace SemantisedTriangleMesh;
 
 static const int BUFFER_SIZE = 65536;
 

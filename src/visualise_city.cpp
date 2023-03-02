@@ -32,10 +32,26 @@
 #include <pointannotation.h>
 #include <building.h>
 
+#include <vtkActor.h>
+#include <vtkCamera.h>
+#include <vtkCellArray.h>
+#include <vtkCellType.h>
+#include <vtkDataSetMapper.h>
+#include <vtkNamedColors.h>
+#include <vtkNew.h>
+#include <vtkPoints.h>
+#include <vtkProperty.h>
+#include <vtkRenderWindow.h>
+#include <vtkRenderWindowInteractor.h>
+#include <vtkRenderer.h>
+#include <vtkTetra.h>
+#include <vtkUnstructuredGrid.h>
+
 VTK_MODULE_INIT(vtkRenderingOpenGL2)
-VTK_MODULE_INIT(vtkInteractionStyle);
+VTK_MODULE_INIT(vtkInteractionStyle)
 
 using namespace std;
+using namespace SemantisedTriangleMesh;
 
 /*************TEMPORANEO, LE VARIABILI GLOBALI SONO IL MALE***************/
 vtkSmartPointer<vtkPropAssembly> assembly;
@@ -46,6 +62,7 @@ vtkSmartPointer<vtkPropAssembly> canvas;
 unsigned int layerId = 0;
 unsigned int shadowId = 0;
 bool showShadows = false;
+bool showWireframe = false;
 
 static const unsigned char RED[3] =    {255,0,0};
 static const unsigned char GREEN[3] =  {0,255,0};
@@ -100,6 +117,9 @@ namespace {
                             shadowId--;
                         else if(layerId > 0)
                             layerId--;
+                    } else if (key == "w" )
+                    {
+                        showWireframe = !showWireframe;
                     } else if(key.size() == 1 && key.at(0) >= '0' && key.at(0) <= '9'){
                         int keyValue = atoi(key.c_str());
                         if(showShadows && keyValue < shadows.size())
@@ -108,7 +128,7 @@ namespace {
                             layerId = static_cast<unsigned int>(keyValue);
                     }
 
-                    if((showShadows && shadowId != currentPos) || (!showShadows && layerId != currentPos))
+                    if(showWireframe || (showShadows && shadowId != currentPos) || (!showShadows && layerId != currentPos))
                     {
                         buildVTKStructure();
                         updateView();
@@ -150,15 +170,11 @@ namespace {
                   assembly = vtkSmartPointer<vtkPropAssembly>::New();
                   vtkSmartPointer<vtkPoints> annotatedPoints = vtkSmartPointer<vtkPoints>::New();
                   vtkSmartPointer<vtkCellArray> annotatedVertices = vtkSmartPointer<vtkCellArray>::New();
-                  vtkSmartPointer<vtkUnsignedCharArray> meshEColors = vtkSmartPointer<vtkUnsignedCharArray>::New();
-                  meshEColors->SetNumberOfComponents(3);
-                  meshEColors->SetName("LColors");
                   vtkSmartPointer<vtkUnsignedCharArray> meshTColors = vtkSmartPointer<vtkUnsignedCharArray>::New();
                   meshTColors->SetNumberOfComponents(3);
                   meshTColors->SetName ("TColors");
                   vtkSmartPointer<vtkActor> meshSurfaceActor = vtkSmartPointer<vtkActor>::New();
                   vtkSmartPointer<vtkActor> meshPointsActor = vtkSmartPointer<vtkActor>::New();
-                  vtkSmartPointer<vtkActor> meshWireframeActor = vtkSmartPointer<vtkActor>::New();
 
                   vtkSmartPointer<vtkCellArray> annotatedLines = vtkSmartPointer<vtkCellArray>::New();
                   vtkSmartPointer<vtkUnsignedCharArray> annotatedLinesColors = vtkSmartPointer<vtkUnsignedCharArray>::New();
@@ -181,6 +197,7 @@ namespace {
                       triangles_colors_counter.push_back(0);
                   }
 
+                  uint counter = 0;
                   for(unsigned int j = 0; j < annotations.at(layerId).size(); j++)
                   {
                       if(dynamic_pointer_cast<SurfaceAnnotation>(annotations.at(layerId).at(j)) != nullptr)
@@ -196,16 +213,15 @@ namespace {
                               triangles_colors.at(tid)[2] += a->getColor()[2];
                               triangles_colors_counter.at(tid)++;
                           }
-                          if(annotationTriangles.size() > 20000)
-                              std::cout << "Annotation " << j << std::endl;
                       } else if(dynamic_pointer_cast<LineAnnotation>(annotations.at(layerId).at(j)) != nullptr)
                       {
-
                           std::shared_ptr<LineAnnotation> a = dynamic_pointer_cast<LineAnnotation>(annotations.at(layerId).at(j));
 
                           //Update of the data-visualization linking
                           for(unsigned int k = 0; k < a->getPolyLines().size(); k++)
+                          {
                               for (unsigned int l = 1; l < a->getPolyLines().at(k).size(); l++) {
+
                                   vtkSmartPointer<vtkLine> segment = vtkSmartPointer<vtkLine>::New();
                                   int vid1 = stoi(a->getPolyLines().at(k).at(l - 1)->getId());
                                   int vid2 = stoi(a->getPolyLines().at(k).at(l)->getId());
@@ -214,6 +230,8 @@ namespace {
                                   annotatedLines->InsertNextCell(segment);
                                   annotatedLinesColors->InsertNextTypedTuple(a->getColor());
                               }
+
+                          }
                       } else if(dynamic_pointer_cast<PointAnnotation>(annotations.at(layerId).at(j)) != nullptr)
                       {
                           continue;
@@ -243,9 +261,6 @@ namespace {
                       }
                   }
 
-
-                  for(unsigned int j = 0; j < mesh->getEdgesNumber(); j++)
-                      meshEColors->InsertNextTypedTuple(BLACK);
 
 
 
@@ -295,21 +310,6 @@ namespace {
                   assembly->AddPart(annotatedPointsActor);
 
 
-          //        vtkSmartPointer<vtkPolyData> wireframePolydata = vtkSmartPointer<vtkPolyData>::New();
-          //        vtkSmartPointer<vtkPolyDataMapper> wireframeMapper = vtkSmartPointer<vtkPolyDataMapper>::New();
-          //        wireframePolydata->SetPoints(meshPoints);
-          //        wireframePolydata->SetLines(meshEdges);
-          //        wireframePolydata->GetCellData()->SetScalars(meshEColors);
-          //        wireframeMapper->SetInputData(wireframePolydata);
-          //        meshWireframeActor = vtkSmartPointer<vtkActor>::New();
-          //        meshWireframeActor->SetMapper(wireframeMapper);
-          //        meshWireframeActor->GetProperty()->SetRepresentationToWireframe();
-
-
-          //        meshWireframeActor->GetProperty()->SetOpacity(1.0);
-          //        meshWireframeActor->GetProperty()->SetLineWidth(3.0);
-
-                  //assembly->AddPart(meshWireframeActor);
 
 
           //        vtkSmartPointer<vtkPolyData> pointPolydata = vtkSmartPointer<vtkPolyData>::New();
@@ -325,6 +325,33 @@ namespace {
           //        assembly->AddPart(meshPointsActor);
 
                   assembly->Modified();
+              }
+              if(showWireframe)
+              {
+
+                  vtkSmartPointer<vtkActor> meshWireframeActor = vtkSmartPointer<vtkActor>::New();
+                  vtkSmartPointer<vtkUnsignedCharArray> meshEColors = vtkSmartPointer<vtkUnsignedCharArray>::New();
+                  meshEColors->SetNumberOfComponents(3);
+                  meshEColors->SetName("LColors");
+                  for(unsigned int j = 0; j < mesh->getEdgesNumber(); j++)
+                      meshEColors->InsertNextTypedTuple(BLACK);
+                          vtkSmartPointer<vtkPolyData> wireframePolydata = vtkSmartPointer<vtkPolyData>::New();
+                          vtkSmartPointer<vtkPolyDataMapper> wireframeMapper = vtkSmartPointer<vtkPolyDataMapper>::New();
+                          wireframePolydata->SetPoints(meshPoints);
+                          wireframePolydata->SetLines(meshEdges);
+                          wireframePolydata->GetCellData()->SetScalars(meshEColors);
+                          wireframeMapper->SetInputData(wireframePolydata);
+                          meshWireframeActor = vtkSmartPointer<vtkActor>::New();
+                          meshWireframeActor->SetMapper(wireframeMapper);
+                          meshWireframeActor->GetProperty()->SetRepresentationToWireframe();
+
+
+                          meshWireframeActor->GetProperty()->SetOpacity(1.0);
+                          meshWireframeActor->GetProperty()->SetLineWidth(3.0);
+
+                          assembly->AddPart(meshWireframeActor);
+
+                          assembly->Modified();
               }
           }
 
@@ -551,5 +578,7 @@ void updateView()
     renderWindowInteractor->SetInteractorStyle(style);
     renderWindow->Render();
     renderWindowInteractor->Start();
+
+
 
 }

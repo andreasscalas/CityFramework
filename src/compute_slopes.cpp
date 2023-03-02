@@ -1,13 +1,16 @@
-#include <TriangleMesh.h>
-#include <annotationfilemanager.h>
-#include <pointannotation.h>
-#include <lineannotation.h>
-#include <utilities.h>
-#include <semanticattribute.h>
+#include "TriangleMesh.h"
+#include "annotationfilemanager.h"
+#include "pointannotation.h"
+#include "lineannotation.h"
+#include "utilities.h"
+#include "semanticattribute.h"
 #include <fstream>
 #include <chrono>
 #include <thread>
 #include <map>
+#include <root.h>
+using namespace SemantisedTriangleMesh;
+using namespace OpenStreetMap;
 
 int main(int argc, char* argv[])
 {
@@ -44,12 +47,9 @@ int main(int argc, char* argv[])
     std::vector<std::shared_ptr<Annotation> > all_annotations = manager.readAndStoreAnnotations(argv[2]);
     std::cout << "Ended!" << std::endl << std::flush;
 
-    std::vector<std::shared_ptr<OSMNode> > nodes;
-    std::vector<std::shared_ptr<OSMWay> > arcs;
-    std::vector<std::shared_ptr<OSMRelation> > relations;
-
     std::cout << "Reading OSM file." << std::endl << std::flush;
-    int out2 = Utilities::loadOSM(argv[3], nodes, arcs, relations);
+    OpenStreetMap::Root osm;
+    int out2 = osm.load(argv[3]);
     std::cout << "Ended!" << std::endl << std::flush;
     std::map<std::string, std::shared_ptr<Vertex> > osmid_to_vertex;
 
@@ -98,6 +98,7 @@ int main(int argc, char* argv[])
     std::cout << std::endl << "Ended!" << std::endl << std::flush;
     all_annotations.clear();
 
+    auto start = std::chrono::high_resolution_clock::now();
     std::vector<std::shared_ptr<Annotation> > streets_annotations = mesh->getAnnotations();
 
     /*********************************Beginning JSON part*************************************/
@@ -134,12 +135,12 @@ int main(int argc, char* argv[])
 
         std::string osmid = *static_cast<std::string*>((*it)->getValue());
         std::vector<std::vector<std::shared_ptr<Vertex> > > polylines = street->getPolyLines();
-        std::shared_ptr<OSMWay> arc = *std::find_if(arcs.begin(), arcs.end(),
-                [osmid](std::shared_ptr<OSMWay> a){
-                    return a->getId().compare(osmid) == 0;
+        auto arc = std::find_if(osm.getWays().begin(), osm.getWays().end(),
+                [osmid](std::pair<std::string, Way*> a){
+                    return a.second->getId().compare(osmid) == 0;
                 });
 
-        if(arc == nullptr)
+        if(arc == osm.getWays().end())
         {
             std::cerr << "One street annotation is not present in OSM." << std::endl;
             return 47;
@@ -151,7 +152,7 @@ int main(int argc, char* argv[])
         }
 
 
-        std::vector<std::shared_ptr<OSMNode> > nodes = arc->getNodes();
+        auto nodes = arc->second->getNodes();
         std::map<std::string, std::shared_ptr<Vertex> >::iterator vit1;
         unsigned int firstPos = 0;
         do
@@ -187,12 +188,12 @@ int main(int argc, char* argv[])
             {
                 unsigned char color[3] = {0,0,0};
                 std::shared_ptr<Vertex> p2 = path.at(l);
-                Point v = (*p2) - (*p1);
-                Point projected(v.getX(), v.getY(), 0);
+                SemantisedTriangleMesh::Point v = (*p2) - (*p1);
+                SemantisedTriangleMesh::Point projected(v.getX(), v.getY(), 0);
                 v /= v.norm();
 
                 double angle = M_PI / 2;
-                if(v != Point(0,0,1) && v != Point(0,0,-1))
+                if(v != SemantisedTriangleMesh::Point(0,0,1) && v != SemantisedTriangleMesh::Point(0,0,-1))
                 {
                     projected /= projected.norm();
                     angle = v.computeAngle(projected);
@@ -288,7 +289,7 @@ int main(int argc, char* argv[])
         }
 
         unsigned char color[3] = {0,0,0};
-        full_path_slope = abs(full_path_slope / (full_path.size() - 1));
+        full_path_slope = abs(full_path_slope / (nodes.size() - 1));
 
         if(full_path_slope >= 0 && full_path_slope < 0.01745330748016422)
         {
@@ -349,6 +350,9 @@ int main(int argc, char* argv[])
     mesh->setAnnotations(streets_slopes_annotations);
     manager.writeAnnotations("averaged_slopes.ant");
 
+    auto end = std::chrono::high_resolution_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::seconds>(end - start);
+    std::cout << "The computation took " << duration.count() << "seconds" << std::endl << std::flush;
     std::cout << "Ended!" << std::endl;
     return 0;
 }

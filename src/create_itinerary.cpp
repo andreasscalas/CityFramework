@@ -9,6 +9,7 @@
 #include <utilities.h>
 #include <graph.h>
 
+using namespace SemantisedTriangleMesh;
 static const int BUFFER_SIZE = 65536;
 
 std::vector<std::vector<ulong> > readItineraries(std::string filename);

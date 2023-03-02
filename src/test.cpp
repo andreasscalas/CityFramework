@@ -12,6 +12,7 @@
 #include "buildingsgroup.h"
 static unsigned char BLUE[3] =   {0,0,255};
 static const int BUFFER_SIZE = 65536;
+using namespace SemantisedTriangleMesh;
 int main(int argc, char *argv[])
 {
 //    if(argc < 3)
@@ -216,28 +217,157 @@ int main(int argc, char *argv[])
 //        for(auto p : b)
 //            p->print(std::cout, BracketsType::NONE, " ");
 //    }
-    Point p1(-4.71,1.7,0), p2(3.59,2.56,0);
-    Point p3(11.89, 3.42,0);
-    double angle = (p2 - p1).computeAngle(p3 - p2);
-    std::cout << angle << std::endl;
-    p3 = Point(5.71,5.52,0);
-    angle = (p2 - p1).computeAngle(p3 - p2);
-    std::cout << angle << std::endl;
-    p3 = Point(3.11,5.86,0);
-    angle = (p2 - p1).computeAngle(p3 - p2);
-    std::cout << angle << std::endl;
-    p3 = Point(-1.35,3.54,0);
-    angle = (p2 - p1).computeAngle(p3 - p2);
-    std::cout << angle << std::endl;
-    p3 = Point(-2.67,1.62,0);
-    angle = (p2 - p1).computeAngle(p3 - p2);
-    std::cout << angle << std::endl;
-    p3 = Point(3.75,-1.96,0);
-    angle = (p2 - p1).computeAngle(p3 - p2);
-    std::cout << angle << std::endl;
-    p3 = Point(7.77,-0.18,0);
-    angle = (p2 - p1).computeAngle(p3 - p2);
-    std::cout << angle << std::endl;
+//    auto mesh = new SemantisedTriangleMesh::TriangleMesh();
+//    auto new_mesh = new SemantisedTriangleMesh::TriangleMesh();
+//    mesh->load(argv[1]);
 
+//    std::vector<std::vector<std::shared_ptr<SemantisedTriangleMesh::Point> > >  bounds;
+//    Utilities::load_shapefile_shp(argv[2], bounds);
+//    std::map<std::shared_ptr<Vertex>, uint> oldToNewVertexMap;
+//    std::map<std::shared_ptr<Edge>, uint> oldToNewEdgesMap;
+//    std::map<std::shared_ptr<Triangle>, uint> oldToNewTrianglesMap;
+//    std::queue<std::shared_ptr<Vertex> > V;
+//    for(uint i = 0; i < mesh->getVerticesNumber(); i++)
+//        if(!Utilities::isPointOutsideBounds(mesh->getVertex(i), bounds))
+//        {
+//            V.push(mesh->getVertex(i));
+//            new_mesh->addNewVertex(mesh->getVertex(i));
+//            oldToNewVertexMap.insert(std::make_pair(mesh->getVertex(i), i));
+//            break;
+//        }
+
+//    do {
+//        auto current_vertex = V.front();
+//        V.pop();
+//        current_vertex->addFlag(FlagType::USED);
+//        if(!Utilities::isPointOutsideBounds(current_vertex, bounds))
+//        {
+//            auto vv = current_vertex->getVV();
+//            auto ve = current_vertex->getVE();
+//            for(auto e : ve)
+//            {
+//                auto opposite_vertex = e->getOppositeVertex(current_vertex);
+//                if(opposite_vertex->searchFlag(FlagType::USED) == -1 && opposite_vertex->searchFlag(FlagType::VISITED) == -1)
+//                {
+//                    opposite_vertex->addFlag(FlagType::VISITED);
+//                    V.push(opposite_vertex);
+//                    oldToNewVertexMap.insert(std::make_pair(opposite_vertex, new_mesh->getVerticesNumber()));
+//                    new_mesh->addNewVertex(opposite_vertex);
+//                }
+//            }
+
+//            for(uint i = 0; i < ve.size(); i++)
+//            {
+//                auto current_edge = ve.at(i);
+//                auto next_vertex = ve.at((i + 1) % ve.size())->getOppositeVertex(current_vertex);
+//                auto opposite_vertex = current_edge->getOppositeVertex(current_vertex);
+
+//                auto new_current_vertex = new_mesh->getVertex(oldToNewVertexMap.at(current_vertex));
+//                auto new_opposite_vertex = new_mesh->getVertex(oldToNewVertexMap.at(opposite_vertex));
+//                std::shared_ptr<Edge> new_current_edge, new_next_edge, new_closing_edge;
+//                if(i == 0 && oldToNewEdgesMap.find(current_edge) == oldToNewEdgesMap.end())
+//                {
+//                    oldToNewEdgesMap.insert(std::make_pair(current_edge, new_mesh->getEdgesNumber()));
+//                    new_current_edge = new_mesh->addNewEdge(new_current_vertex, new_opposite_vertex);
+//                } else
+//                    new_current_edge = new_mesh->getEdge(oldToNewEdgesMap.at(current_edge));
+
+//                auto new_next_vertex = new_mesh->getVertex(oldToNewVertexMap.at(next_vertex));
+//                auto next_edge = current_vertex->getCommonEdge(next_vertex);
+//                if(oldToNewEdgesMap.find(next_edge) == oldToNewEdgesMap.end())
+//                {
+//                    oldToNewEdgesMap.insert(std::make_pair(next_edge, new_mesh->getEdgesNumber()));
+//                    new_next_edge = new_mesh->addNewEdge(new_current_vertex, new_next_vertex);
+//                } else
+//                    new_next_edge = new_mesh->getEdge(oldToNewEdgesMap.at(next_edge));
+
+//                auto closing_edge = opposite_vertex->getCommonEdge(next_vertex);
+//                if(oldToNewEdgesMap.find(closing_edge) == oldToNewEdgesMap.end())
+//                {
+//                    oldToNewEdgesMap.insert(std::make_pair(closing_edge, new_mesh->getEdgesNumber()));
+//                    new_closing_edge = new_mesh->getEdge(oldToNewEdgesMap.at(closing_edge));
+//                }else
+//                    new_closing_edge = new_mesh->getEdge(oldToNewEdgesMap.at(closing_edge));
+
+//                auto current_triangle = current_edge->getLeftTriangle(current_vertex);
+//                if(oldToNewTrianglesMap.find(current_triangle) == oldToNewTrianglesMap.end())
+//                {
+//                    oldToNewTrianglesMap.insert(std::make_pair(current_triangle, new_mesh->getTrianglesNumber()));
+//                    auto t = new_mesh->addNewTriangle(new_current_edge, new_closing_edge, new_next_edge);
+//                }
+
+
+
+//            }
+
+//        }
+
+
+
+//    } while(V.size() > 0);
+//    new_mesh->save("provina.ply");
+//    delete mesh;
+//    delete new_mesh;
+    auto mesh = new SemantisedTriangleMesh::TriangleMesh();
+    std::vector<std::vector<std::shared_ptr<SemantisedTriangleMesh::Point> > >  bounds;
+    mesh->load(argv[1]);
+    Utilities::load_shapefile_shp(argv[2], bounds);
+    for(uint i = 0; i < mesh->getVerticesNumber(); i++)
+        if(Utilities::isPointOutsideBounds(mesh->getVertex(i), bounds))
+        {
+            if(mesh->getVertex(i)->searchFlag(FlagType::TO_BE_REMOVED) == -1)
+                mesh->getVertex(i)->addFlag(FlagType::TO_BE_REMOVED);
+            auto ve = mesh->getVertex(i)->getVE();
+            for(auto e : ve)
+            {
+                if(e->searchFlag(FlagType::TO_BE_REMOVED) == -1)
+                    e->addFlag(FlagType::TO_BE_REMOVED);
+                auto t = e->getLeftTriangle(mesh->getVertex(i));
+                if(t != nullptr && t->searchFlag(FlagType::TO_BE_REMOVED) == -1)
+                    t->addFlag(FlagType::TO_BE_REMOVED);
+            }
+        }
+    mesh->removeFlaggedVertices();
+    mesh->removeFlaggedEdges();
+    mesh->removeFlaggedTriangles();
+    double max_length = -std::numeric_limits<double>::max();
+    double mean_length = 0;
+    double min_z = std::numeric_limits<double>::max();
+    double max_z = -std::numeric_limits<double>::max();
+    for(uint i = 0; i < mesh->getVerticesNumber(); i++)
+    {
+        if(mesh->getVertex(i)->getZ() < min_z)
+            min_z = mesh->getVertex(i)->getZ();
+        if(mesh->getVertex(i)->getZ() > max_z)
+            max_z = mesh->getVertex(i)->getZ();
+    }
+
+    for(uint i = 0; i < mesh->getEdgesNumber(); i++)
+    {
+        auto l = mesh->getEdge(i)->computeLength();
+        if(l > max_length)
+            max_length = l;
+        mean_length += l;
+    }
+    mean_length /= mesh->getEdgesNumber();
+
+
+    for(uint i = 0; i < mesh->getEdgesNumber(); i++)
+    {
+        auto e = mesh->getEdge(i);
+        if(e->computeLength() < 0.1 && e->searchFlag(FlagType::TO_BE_REMOVED) == -1)
+        {
+            e->collapse();
+        }
+    }
+
+    mesh->removeFlaggedVertices();
+    mesh->removeFlaggedEdges();
+    mesh->removeFlaggedTriangles();
+    std::cout << "Max length: " << max_length << " min z: " << min_z << " max z: " << max_z << std::endl;
+
+    mesh->resetIds();
+    mesh->save("provina.ply", 15);
+    delete mesh;
     return 0;
 }

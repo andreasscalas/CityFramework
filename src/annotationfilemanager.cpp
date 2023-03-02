@@ -1,19 +1,20 @@
 #include "annotationfilemanager.h"
+#include "facet.h"
+#include "geometricattribute.h"
+#include "semanticattribute.h"
+#include "surfaceannotation.h"
+#include "lineannotation.h"
+#include "pointannotation.h"
 #include <iostream>
 #include <fstream>
 #include <vector>
-#include <facet.h>
-#include <geometricattribute.h>
-#include <semanticattribute.h>
-#include <surfaceannotation.h>
-#include <lineannotation.h>
-#include <pointannotation.h>
 #include <rapidjson/writer.h>
 #include <rapidjson/filereadstream.h>
 #include <rapidjson/document.h>
 #include <rapidjson/stringbuffer.h>
 
 using namespace std;
+using namespace SemantisedTriangleMesh;
 
 AnnotationFileManager::AnnotationFileManager()
 {

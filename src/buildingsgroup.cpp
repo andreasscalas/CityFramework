@@ -6,6 +6,7 @@
 #include <queue>
 #include <set>
 
+using namespace SemantisedTriangleMesh;
 typedef unsigned int uint;
 
 BuildingsGroup::BuildingsGroup()
@@ -64,10 +65,10 @@ void BuildingsGroup::computeAdjacencyGraph()
                 });
                 if(it != boundaries2.at(0).end())
                 {
-                    OSMNode* n1 = static_cast<OSMNode*>(boundaries1.at(0).at(i)->getInfo());
-                    OSMNode* n2 = static_cast<OSMNode*>((*it)->getInfo());
+                    OpenStreetMap::Node* n1 = static_cast<OpenStreetMap::Node*>(boundaries1.at(0).at(i)->getInfo());
+                    OpenStreetMap::Node* n2 = static_cast<OpenStreetMap::Node*>((*it)->getInfo());
 
-                    if(n1->getId().compare(n2->getId()) != 0)
+                    if(n1 != nullptr && n2 != nullptr && n1->getId().compare(n2->getId()) != 0)
                     {
                         it = boundaries2.at(0).erase(it);
                         boundaries2.at(0).insert(it, boundaries1.at(0).at(i));
