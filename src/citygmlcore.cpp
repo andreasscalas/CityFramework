@@ -125,11 +125,6 @@ int CityGMLCore::readLiDAR(std::string filename)
         std::cout << "Signature: " << header.GetFileSignature() << std::endl;
         std::cout << "Points count: " << header.GetPointRecordsCount() << std::endl;
 
-
-        std::ofstream ofs("tmp.las", std::ios::out | std::ios::binary);
-
-        liblas::Writer w(ofs, header);
-
         auto bb = Utilities::bbExtraction(bounds[0]);
         lidarDTMPoints.clear();
         lidarDSMPoints.clear();
@@ -145,7 +140,7 @@ int CityGMLCore::readLiDAR(std::string filename)
                 {
                     lidarDTMPoints.push_back(p_);
                 }
-                else if (s.compare("Building") == 0 && p.GetReturnNumber() == p.GetNumberOfReturns())
+                else if (/*s.compare("Building") == 0 && */p.GetReturnNumber() == 1 /*p.GetNumberOfReturns()*/)
                 {
                     lidarDSMPoints.push_back(p_);
                 }
@@ -932,7 +927,7 @@ std::vector<std::vector<double> > CityGMLCore::extractBuildingsHeightsFromLidar(
             boundaries2D.push_back(boundary2D);
         }
         std::vector<std::shared_ptr<SemantisedTriangleMesh::Point> > bb = Utilities::bbExtraction(boundaries2D[0]);
-        double sphere_radius = ((*bb[0]) - (*bb[2])).norm();
+        double sphere_radius = ((*bb[0]) - (*bb[2])).norm() / 2;
         SemantisedTriangleMesh::Point middle(0,0,0);
         std::for_each(boundaries2D[0].begin(), boundaries2D[0].end(), [&middle](std::shared_ptr<Vertex> v){
             middle += *v;
@@ -944,10 +939,27 @@ std::vector<std::vector<double> > CityGMLCore::extractBuildingsHeightsFromLidar(
         point_t query_point = {middle.getX(), middle.getY(), 0.0};
         neighbors_indices = tree.neighborhood_indices(query_point, sphere_radius);
 
+        uint counter = 0;
         for(unsigned int j = 0; j < neighbors_indices.size(); j++)
         {
-            auto p = lidarDSMPoints.at(neighbors_indices.at(j));
+            auto v = lidarDSMPoints.at(neighbors_indices.at(j));
+            auto p = std::make_shared<SemantisedTriangleMesh::Point>(v->getX(), v->getY(), 0);
+
+
             bool insideOuter = false, outsideInner = true;
+//            for(uint l = 0; l < boundaries2D.size(); l++)
+//            {
+//                std::cout << "B"<< counter << "=[" << std::endl;
+//                for(uint k = 0; k < boundaries2D.at(l).size(); k++)
+//                {
+//                    std::static_pointer_cast<SemantisedTriangleMesh::Point>(boundaries2D[0].at(k))->print(std::cout, BracketsType::NONE, " ");
+//                }
+//                std::cout << "];" << std::endl;
+//                std::cout << "plot(B" << counter << "(:,1), B" << counter << "(:,2));" << std::endl;
+//                std::cout << "labels=num2cell(0:length(B" << counter << ")-1);" << std::endl;
+//                std::cout << "text(B" << counter << "(:,1), B" << counter++ << "(:,2), labels);" << std::endl << std::endl;
+//            }
+
             if(Utilities::isPointInsidePolygon(p, boundaries2D[0]))
             {
                 insideOuter = true;
@@ -1196,12 +1208,14 @@ int CityGMLCore::buildLevel0()
 
         std::cout << "Cleaning polygons/lines" << std::endl;
 
-        for(auto nit = osm.getNodes().begin(); nit != osm.getNodes().end(); nit++)
+        for(auto nit = osm.getNodes().begin(); nit != osm.getNodes().end();)
         {
             auto p = nit->second->getCoordinates();
             auto point = std::make_shared<SemantisedTriangleMesh::Point>(p->x, p->y, 0);
             if(isPointOutsideBounds(point))
                 nit = osm.removeNode(nit->second->getId());
+            else
+                nit++;
         }
         for(auto ait = osm.getWays().begin(); ait != osm.getWays().end(); ait++)
         {
@@ -1222,7 +1236,7 @@ int CityGMLCore::buildLevel0()
 
         //TO DO: IMPLEMENTARE PULIZIA BOUNDARY QUI
 
-        for(auto rit = osm.getRelations().begin(); rit != osm.getRelations().end(); rit++)
+        for(auto rit = osm.getRelations().begin(); rit != osm.getRelations().end();)
         {
             auto tags = rit->second->getTags();
 
@@ -1318,14 +1332,15 @@ int CityGMLCore::buildLevel0()
                 {
                     building->setId(std::to_string(buildings.size()));
                     buildings.push_back(building);
+                    rit++;
                 }
                 else
                 {
                     rit = osm.removeRelation(rit->second->getId());
-                    rit--;
                 }
 
-            }
+            } else
+                rit++;
         }
 
 
@@ -1516,11 +1531,10 @@ int CityGMLCore::buildLevel0()
 
         std::vector<VertexList > arcsPoints, constraints;
 
-        for(auto ait = streetsArcs.begin(); ait != streetsArcs.end(); ait++)
+        for(auto ait = streetsArcs.begin(); ait != streetsArcs.end(); )
             if(osm.getWays().at(*ait)->getNodes().size() < 2)
             {
                 ait = streetsArcs.erase(ait);
-                ait--;
             } else
             {
                 VertexList arc_points;
@@ -1540,6 +1554,7 @@ int CityGMLCore::buildLevel0()
                 }
 
                 arcsPoints.push_back(arc_points);
+                ait++;
             }
 
 
@@ -1661,7 +1676,6 @@ int CityGMLCore::buildLevel0()
         VertexList constraintVertices = createLiDARDTMVertices(/*triangulationHoles, arcsPoints/*city_size, *origin*/);
 
         meshes[0]->triangulate(triangulationHoles, arcsPoints, constraintVertices);
-        meshes[0]->save("provinaprovosaprovante.ply", 15);
         for(uint i = 0; i < keptClippings.size(); i++)
         {
             uint numberOfNewLines = keptClippings.at(i).second - keptClippings.at(i).first;
@@ -2883,7 +2897,6 @@ int CityGMLCore::buildLevel0()
         uint counter=0;
         for(uint i = 0; i < buildings.size(); i++)
         {
-
             auto boundaries = buildings[i]->getBoundaries();
             std::shared_ptr<SurfaceAnnotation> annotation = std::make_shared<SurfaceAnnotation>();
             annotation->setId(bid);
@@ -2892,13 +2905,13 @@ int CityGMLCore::buildLevel0()
             annotation->setColor(building_color);
 
             annotation->setOutlines(boundaries);
-            for(uint j = 0; j < boundaries.size(); j++)
-            {
-                std::vector<std::shared_ptr<Vertex> > annotationBoundary;
-                for(uint k = 0; k < boundaries.at(j).size(); k++)
-                    annotationBoundary.push_back(std::static_pointer_cast<Vertex>(boundaries.at(j).at(k)));
-                annotation->addOutline(annotationBoundary);
-            }
+//            for(uint j = 0; j < boundaries.size(); j++)
+//            {
+//                std::vector<std::shared_ptr<Vertex> > annotationBoundary;
+//                for(uint k = 0; k < boundaries.at(j).size(); k++)
+//                    annotationBoundary.push_back(std::static_pointer_cast<Vertex>(boundaries.at(j).at(k)));
+//                annotation->addOutline(annotationBoundary);
+//            }
 
             annotation->setMesh(meshes[0]);
             meshes[0]->addAnnotation(annotation);
@@ -3260,6 +3273,7 @@ int CityGMLCore::buildLevel1() {
         }
 
 //        meshes[1]->save(std::to_string(i).append(".ply"), 15);
+
     }
 
     meshes[1]->removeFlaggedTriangles();
@@ -3307,7 +3321,6 @@ void CityGMLCore::setLevel0(std::string meshFileName, std::string annotationFile
     manager.readAnnotations(annotationFileName);
 
     uint counter = 0;
-    std::ofstream stream("buidlings.m");
     for(auto annotation : meshes[0]->getAnnotations())
     {
         auto tag = annotation->getTag();

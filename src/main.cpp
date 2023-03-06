@@ -35,11 +35,11 @@ int main(int argc, char *argv[])
 
     CityGMLCore manager(argv[1], argv[2], argv[3], argv[4], argv[5]);
 
-//    manager.setLevel(0,
-//                     "/home/andreas/Documenti/Progetti/Extruder/build-minSizeRelease/a/level0.ply",
-//                     "/home/andreas/Documenti/Progetti/Extruder/build-minSizeRelease/a/annotations.ant");
+    manager.setLevel(0,
+                     "/home/andreas/Documenti/Progetti/Extruder/build-minSizeRelease/Catania/simplified/level0.ply",
+                     "/home/andreas/Documenti/Progetti/Extruder/build-minSizeRelease/Catania/simplified/annotations.ant");
     auto start = std::chrono::high_resolution_clock::now();
-    manager.buildLevel(0);
+    //manager.buildLevel(0);
     manager.buildLevel(1);
     auto end = std::chrono::high_resolution_clock::now();
 
