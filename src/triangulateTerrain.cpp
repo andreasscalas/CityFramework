@@ -1,9 +1,9 @@
 #include <iostream>
 #include <liblas/liblas.hpp>
 #include <shapefil.h>
-#include <TriangleMesh.h>
-#include <Point.h>
-#include <trianglehelper1.h>
+#include <TriangleMesh.hpp>
+#include <Point.hpp>
+#include <trianglehelper.hpp>
 #include <utilities.h>
 
 using namespace SemantisedTriangleMesh;

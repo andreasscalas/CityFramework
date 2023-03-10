@@ -3,7 +3,7 @@
 
 #include <string>
 #include <iostream>
-#include "TriangleMesh.h"
+#include "TriangleMesh.hpp"
 
 class AnnotationFileManager
 {

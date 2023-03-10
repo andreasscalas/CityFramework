@@ -1,11 +1,11 @@
 #include "citygmlcore.h"
 
-#include "trianglehelper.h"
+#include "trianglehelper.hpp"
 #include "utilities.h"
-#include "surfaceannotation.h"
-#include "lineannotation.h"
-#include "pointannotation.h"
-#include "semanticattribute.h"
+#include "surfaceannotation.hpp"
+#include "lineannotation.hpp"
+#include "pointannotation.hpp"
+#include "semanticattribute.hpp"
 #include "coordsconverter.h"
 #include "buildingsgroup.h"
 #include "annotationfilemanager.h"
@@ -103,56 +103,67 @@ CityGMLCore::CityGMLCore(std::string osmFilename, std::string dtmFilename, std::
 
     Utilities::load_shapefile_shp(boundsFile, bounds);
 
-    int retValue_ = readLiDAR(lidarFilename);
-
-    std::cout << "LiDAR data loading ended!" << std::endl << std::flush;
-}
-
-int CityGMLCore::readLiDAR(std::string filename)
-{
-
-    std::ifstream ifs;
-    ifs.open(filename, std::ios::in | std::ios::binary);
-
-    if(ifs.is_open())
+    std::vector<std::string> allowedClasses = {"ground", "building"};
+    std::vector<std::pair<std::shared_ptr<SemantisedTriangleMesh::Point>, std::string> > classifiedPoints;
+    int retValue_ = readLiDAR(lidarFilename, allowedClasses, true, bounds, classifiedPoints);
+    if(retValue_ == 0)
     {
-        liblas::ReaderFactory f;
-        std::string s;
-        liblas::Reader reader = f.CreateWithStream(ifs);
-        liblas::Header const& header = reader.GetHeader();
-
-        std::cout << "Compressed: " << header.Compressed() << std::endl;
-        std::cout << "Signature: " << header.GetFileSignature() << std::endl;
-        std::cout << "Points count: " << header.GetPointRecordsCount() << std::endl;
-
-        auto bb = Utilities::bbExtraction(bounds[0]);
-        lidarDTMPoints.clear();
-        lidarDSMPoints.clear();
-        while (reader.ReadNextPoint())
-        {
-            liblas::Point const& p = reader.GetPoint();
-            auto p_ = std::make_shared<SemantisedTriangleMesh::Point>(p.GetX(), p.GetY(), p.GetZ());
-            std::string s = p.GetClassification().GetClassName();
-            auto p_2d = *p_;
-            p_2d.setZ(0);
-
-                if(s.compare("Ground") == 0)
-                {
-                    lidarDTMPoints.push_back(p_);
-                }
-                else if (/*s.compare("Building") == 0 && */p.GetReturnNumber() == 1 /*p.GetNumberOfReturns()*/)
-                {
-                    lidarDSMPoints.push_back(p_);
-                }
-        }
-
-        ifs.close();
-
-        return 0;
-    }
-    return -1;
+        for(auto p : classifiedPoints)
+            if(p.second.compare("ground") == 0)
+                lidarDTMPoints.push_back(p.first);
+            else
+                lidarDSMPoints.push_back(p.first);
+        std::cout << "LiDAR data loading ended!" << std::endl << std::flush;
+    } else
+        std::cout << "Error loading LiDAR file" << std::endl;
 
 }
+
+//int CityGMLCore::readLiDAR(std::string filename)
+//{
+
+//    std::ifstream ifs;
+//    ifs.open(filename, std::ios::in | std::ios::binary);
+
+//    if(ifs.is_open())
+//    {
+//        liblas::ReaderFactory f;
+//        std::string s;
+//        liblas::Reader reader = f.CreateWithStream(ifs);
+//        liblas::Header const& header = reader.GetHeader();
+
+//        std::cout << "Compressed: " << header.Compressed() << std::endl;
+//        std::cout << "Signature: " << header.GetFileSignature() << std::endl;
+//        std::cout << "Points count: " << header.GetPointRecordsCount() << std::endl;
+
+//        auto bb = Utilities::bbExtraction(bounds[0]);
+//        lidarDTMPoints.clear();
+//        lidarDSMPoints.clear();
+//        while (reader.ReadNextPoint())
+//        {
+//            liblas::Point const& p = reader.GetPoint();
+//            auto p_ = std::make_shared<SemantisedTriangleMesh::Point>(p.GetX(), p.GetY(), p.GetZ());
+//            std::string s = p.GetClassification().GetClassName();
+//            auto p_2d = *p_;
+//            p_2d.setZ(0);
+
+//                if(s.compare("Ground") == 0)
+//                {
+//                    lidarDTMPoints.push_back(p_);
+//                }
+//                else if (/*s.compare("Building") == 0 && */p.GetReturnNumber() == 1 /*p.GetNumberOfReturns()*/)
+//                {
+//                    lidarDSMPoints.push_back(p_);
+//                }
+//        }
+
+//        ifs.close();
+
+//        return 0;
+//    }
+//    return -1;
+
+//}
 
 //Da controllare, non so perché è così complicato
 void CityGMLCore::fixWay(OpenStreetMap::Way *way)
@@ -1109,6 +1120,72 @@ int CityGMLCore::buildLevel(uint level)
             return buildLevel0();
         case 1:
             return buildLevel1();
+    }
+    return -1;
+}
+
+int CityGMLCore::readLiDAR(std::string filename,
+                           std::vector<std::string> allowedClasses,
+                           bool checkInsideBounds,
+                           std::vector<std::vector<std::shared_ptr<SemantisedTriangleMesh::Point> > > bounds,
+                           std::vector<std::pair<std::shared_ptr<SemantisedTriangleMesh::Point>, std::string> > &classifiedPoints)
+{
+    std::ifstream ifs;
+    ifs.open(filename, std::ios::in | std::ios::binary);
+
+    if(ifs.is_open())
+    {
+        liblas::ReaderFactory f;
+        std::string s;
+        liblas::Reader reader = f.CreateWithStream(ifs);
+        liblas::Header const& header = reader.GetHeader();
+
+        std::cout << "Compressed: " << header.Compressed() << std::endl;
+        std::cout << "Signature: " << header.GetFileSignature() << std::endl;
+        std::cout << "Points count: " << header.GetPointRecordsCount() << std::endl;
+
+        auto bb = Utilities::bbExtraction(bounds[0]);
+        while (reader.ReadNextPoint())
+        {
+            liblas::Point const& p = reader.GetPoint();
+            auto p_ = std::make_shared<SemantisedTriangleMesh::Point>(p.GetX(), p.GetY(), p.GetZ());
+            std::string s = p.GetClassification().GetClassName();
+            auto p_2d = std::make_shared<SemantisedTriangleMesh::Point>(*p_);
+
+            p_2d->setZ(0);
+            if(!checkInsideBounds || Utilities::isPointInsidePolygon(p_2d, bb))
+            {
+                bool insideBounds = false;
+                if(checkInsideBounds && Utilities::isPointInsidePolygon(p_2d, bounds[0]))
+                {
+                    insideBounds = true;
+                    for(uint i = 1; i < bounds.size(); i++)
+                        if(Utilities::isPointInsidePolygon(p_2d, bounds[i]))
+                        {
+                            insideBounds = false;
+                            break;
+                        }
+
+                    if(!insideBounds)
+                        break;
+                }
+
+                if(!checkInsideBounds || insideBounds)
+                {
+                    std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) { return std::tolower(c); });
+                    auto sit = std::find_if(allowedClasses.begin(), allowedClasses.end(), [s](std::string classString) {
+                        return classString.compare(s) == 0;
+                    });
+                    if(sit != allowedClasses.end())
+                        classifiedPoints.push_back(std::make_pair(p_, s));
+                }
+
+            }
+        }
+
+        ifs.close();
+
+        return 0;
     }
     return -1;
 }
@@ -2211,7 +2288,7 @@ int CityGMLCore::buildLevel0()
 
             }
 
-            TriHelper::TriangleHelper helper(points, polylines, holes, false);
+            TriHelper::TriangleHelper helper(points, polylines, holes, false, true);
             std::vector<double*> generated_points = helper.getAddedPoints();
 
 

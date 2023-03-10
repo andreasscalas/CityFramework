@@ -4,8 +4,8 @@
 #include <vector>
 #include <memory>
 #include <string>
-#include "Point.h"
-#include "Vertex.h"
+#include "Point.hpp"
+#include "Vertex.hpp"
 
 typedef std::vector<std::shared_ptr<SemantisedTriangleMesh::Point> >  PointList;
 typedef std::vector<std::shared_ptr<SemantisedTriangleMesh::Vertex> >  VertexList;

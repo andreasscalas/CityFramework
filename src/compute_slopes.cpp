@@ -1,9 +1,9 @@
-#include "TriangleMesh.h"
+#include "TriangleMesh.hpp"
 #include "annotationfilemanager.h"
-#include "pointannotation.h"
-#include "lineannotation.h"
+#include "pointannotation.hpp"
+#include "lineannotation.hpp"
+#include "semanticattribute.hpp"
 #include "utilities.h"
-#include "semanticattribute.h"
 #include <fstream>
 #include <chrono>
 #include <thread>

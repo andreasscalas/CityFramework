@@ -2,12 +2,12 @@
 #include <rapidjson/document.h>
 #include <rapidjson/stringbuffer.h>
 #include <annotationfilemanager.h>
-#include <lineannotation.h>
-#include <map>
-#include <pointannotation.h>
-#include <semanticattribute.h>
 #include <utilities.h>
 #include <graph.h>
+#include <lineannotation.hpp>
+#include <pointannotation.hpp>
+#include <semanticattribute.hpp>
+#include <map>
 
 using namespace SemantisedTriangleMesh;
 static const int BUFFER_SIZE = 65536;

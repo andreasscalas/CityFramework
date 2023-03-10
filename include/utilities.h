@@ -1,8 +1,8 @@
 #ifndef UTILITIES_H
 #define UTILITIES_H
 
-#include "TriangleMesh.h"
-#include "Point.h"
+#include "TriangleMesh.hpp"
+#include "Point.hpp"
 #include "relation.h"
 #include "way.h"
 #include "node.h"

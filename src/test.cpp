@@ -1,10 +1,21 @@
 ﻿
+#include "iostream"
+#include <fstream>
+#include <string>
+#include <cstdlib>
+#include <gdal_priv.h>
+#include <cpl_conv.h>
+#include <limits.h>
+#include <stdlib.h>
+#include <liblas/liblas.hpp>
+
+
 #include <document.h>
 #include <filereadstream.h>
 #include <coordsconverter.h>
 
 #include "annotationfilemanager.h"
-#include "lineannotation.h"
+#include "lineannotation.hpp"
 #include "geotiff.h"
 #include "nanoflann.hpp"
 #include "utilities.h"
@@ -13,6 +24,47 @@
 static unsigned char BLUE[3] =   {0,0,255};
 static const int BUFFER_SIZE = 65536;
 using namespace SemantisedTriangleMesh;
+
+
+int readLiDAR(std::string filename, std::vector<std::shared_ptr<SemantisedTriangleMesh::Point> > &points)
+{
+
+    std::ifstream ifs;
+    ifs.open(filename, std::ios::in | std::ios::binary);
+
+    if(ifs.is_open())
+    {
+        liblas::ReaderFactory f;
+        std::string s;
+        liblas::Reader reader = f.CreateWithStream(ifs);
+        liblas::Header const& header = reader.GetHeader();
+
+        std::cout << "Compressed: " << header.Compressed() << std::endl;
+        std::cout << "Signature: " << header.GetFileSignature() << std::endl;
+        std::cout << "Points count: " << header.GetPointRecordsCount() << std::endl;
+
+        while (reader.ReadNextPoint())
+        {
+            liblas::Point const& p = reader.GetPoint();
+            auto p_ = std::make_shared<SemantisedTriangleMesh::Point>(p.GetX(), p.GetY(), p.GetZ());
+            std::string s = p.GetClassification().GetClassName();
+            auto p_2d = *p_;
+            p_2d.setZ(0);
+
+            if (p.GetReturnNumber() == 1)
+            {
+                points.push_back(p_);
+            }
+        }
+
+        ifs.close();
+
+        return 0;
+    }
+    return -1;
+
+}
+
 int main(int argc, char *argv[])
 {
 //    if(argc < 3)
@@ -308,7 +360,7 @@ int main(int argc, char *argv[])
 //    new_mesh->save("provina.ply");
 //    delete mesh;
 //    delete new_mesh;
-    auto mesh = new SemantisedTriangleMesh::TriangleMesh();
+    /*auto mesh = new SemantisedTriangleMesh::TriangleMesh();
     std::vector<std::vector<std::shared_ptr<SemantisedTriangleMesh::Point> > >  bounds;
     mesh->load(argv[1]);
     Utilities::load_shapefile_shp(argv[2], bounds);
@@ -368,6 +420,120 @@ int main(int argc, char *argv[])
 
     mesh->resetIds();
     mesh->save("provina.ply", 15);
-    delete mesh;
+    delete mesh;*/
+
+    std::vector<std::shared_ptr<SemantisedTriangleMesh::Point> > points;
+    std::string filename = argv[1];
+    auto retValue = readLiDAR(filename, points);
+    if(retValue != 0)
+        exit(retValue);
+
+    GDALAllRegister();
+    CPLPushErrorHandler(CPLQuietErrorHandler);
+    GDALDataset *geotiffDataset;
+    GDALDriver *driverGeotiff;
+    GDALRasterBand *geotiffBand;
+    double minX = std::numeric_limits<double>::max();
+    double minY = std::numeric_limits<double>::max();
+    double maxX = -std::numeric_limits<double>::max();
+    double maxY = -std::numeric_limits<double>::max();
+    for(auto p : points)
+    {
+        if(p->getX() < minX)
+            minX = p->getX();
+        if(p->getX() > maxX)
+            maxX = p->getX();
+        if(p->getY() < minY)
+            minY = p->getY();
+        if(p->getY() > maxY)
+            maxY = p->getY();
+    }
+    uint imageXResolution = std::ceil(maxX - minX);
+    uint imageYResolution = std::ceil(maxY - minY);
+    double transform[6] = {minX, 1, 0, maxY, 0, 1};
+    double** heights = static_cast<double**>(malloc(imageYResolution * sizeof (double*)));
+    uint** heights_count = static_cast<uint**>(malloc(imageYResolution * sizeof (uint*)));
+    for(uint i = 0; i < imageYResolution; i++)
+    {
+        heights[i] = static_cast<double*>(malloc(imageXResolution * sizeof(double)));
+        heights_count[i] = static_cast<uint*>(malloc(imageXResolution * sizeof(uint)));
+    }
+
+    for(auto p : points)
+    {
+        uint i = imageYResolution - (std::floor(p->getY() - minY) + 1);
+        uint j = std::floor(p->getX() - minX);
+        heights[i][j] += p->getZ();
+        heights_count[i][j]++;
+    }
+
+    for(uint i = 0; i < imageYResolution; i++)
+        for(uint j = 0; j < imageXResolution; j++)
+            if(heights_count[i][j] > 0)
+                heights[i][j] /= heights_count[i][j];
+            else
+            {
+                double height = 0;
+                uint count = 0;
+                if(i > 0 && heights_count[i - 1][j] > 0)
+                {
+                    height += heights[i - 1][j];
+                    count++;
+                }
+                if(i < imageYResolution && heights_count[i + 1][j] > 0)
+                {
+                    height += heights[i + 1][j];
+                    count++;
+                }
+                if(j > 0 && heights_count[i][j - 1] > 0)
+                {
+                    height += heights[i][j - 1];
+                    count++;
+                }
+                if(j < imageXResolution && heights_count[i][j + 1] > 0)
+                {
+                    height += heights[i][j+1];
+                    count++;
+                }
+                if(count > 0)
+                    height /= count;
+                else
+                    exit(8);
+                heights[i][j] = height;
+            }
+
+
+    std::string geoTiffFilename = "Catania_DSM.tif";
+    driverGeotiff = GetGDALDriverManager()->GetDriverByName("GTiff");
+    geotiffDataset = driverGeotiff->Create(geoTiffFilename.c_str(),imageXResolution, imageYResolution, 1, GDT_Float32,NULL);
+    geotiffDataset->SetGeoTransform(transform);
+
+    geotiffDataset->SetProjection("EPSG:32633");
+    float *rowBuff = (float*) CPLMalloc(sizeof(float) * imageXResolution);
+
+      /* iterate through all pixels in 2D dBZ
+       * reflectivity array and assign values into rowBuff
+       * array. Then write each row into Geotiff object.
+       */
+
+    for(int row = 0; row < imageYResolution; row++) {
+        for(int col = 0; col < imageXResolution; col++) {
+            rowBuff[col] = (float)heights[row][col];
+        }
+        geotiffDataset->GetRasterBand(1)->RasterIO(GF_Write, 0, row, imageXResolution, 1, rowBuff, imageXResolution, 1, GDT_Float32, 0, 0);
+    }
+
+    GDALClose(geotiffDataset) ;
+    GDALDestroyDriverManager();
+    for(uint i = 0; i < imageYResolution; i++)
+    {
+        free(heights[i]);
+        free(heights_count[i]);
+    }
+    free(heights);
+    free(heights_count);
+
+
+
     return 0;
 }

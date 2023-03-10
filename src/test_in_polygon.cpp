@@ -1,5 +1,5 @@
 #include "annotationfilemanager.h"
-#include "surfaceannotation.h"
+#include "surfaceannotation.hpp"
 #include "coordsconverter.h"
 #include "utilities.h"
 #include "geotiff.h"

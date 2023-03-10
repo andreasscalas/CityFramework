@@ -2,7 +2,6 @@
 #include <map>
 #include <string>
 #include <sstream>
-#include <Point.h>
 #include <utilities.h>
 
 #include <vtkSmartPointer.h>
@@ -25,27 +24,14 @@
 #include <vtkInteractorStyleTrackballActor.h>
 #include <vtkInteractorStyleTrackballCamera.h>
 #include <vtkAutoInit.h>
-#include <annotation.h>
+#include <Point.hpp>
+#include <annotation.hpp>
+#include <surfaceannotation.hpp>
+#include <lineannotation.hpp>
+#include <pointannotation.hpp>
 #include <annotationfilemanager.h>
-#include <surfaceannotation.h>
-#include <lineannotation.h>
-#include <pointannotation.h>
 #include <building.h>
 
-#include <vtkActor.h>
-#include <vtkCamera.h>
-#include <vtkCellArray.h>
-#include <vtkCellType.h>
-#include <vtkDataSetMapper.h>
-#include <vtkNamedColors.h>
-#include <vtkNew.h>
-#include <vtkPoints.h>
-#include <vtkProperty.h>
-#include <vtkRenderWindow.h>
-#include <vtkRenderWindowInteractor.h>
-#include <vtkRenderer.h>
-#include <vtkTetra.h>
-#include <vtkUnstructuredGrid.h>
 
 VTK_MODULE_INIT(vtkRenderingOpenGL2)
 VTK_MODULE_INIT(vtkInteractionStyle)

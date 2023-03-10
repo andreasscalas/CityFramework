@@ -3,7 +3,7 @@
 
 #include "building.h"
 
-#include "TriangleMesh.h"
+#include "TriangleMesh.hpp"
 #include "node.h"
 #include "way.h"
 #include "relation.h"
@@ -23,7 +23,11 @@ public:
 
     int buildLevel(uint level = 0);
 
-    int readLiDAR(std::string filename);
+    int readLiDAR(std::string filename,
+                  std::vector<std::string> allowedClasses,
+                  bool checkInsideBounds,
+                  std::vector<std::vector<std::shared_ptr<SemantisedTriangleMesh::Point> > > bounds,
+                  std::vector<std::pair<std::shared_ptr<SemantisedTriangleMesh::Point>, std::string> > &classifiedPoints);
 
     /**
      * @brief fixWay removes duplicated nodes, spikes and other errors from a polyline defined by an OpenStreetMap::Way.

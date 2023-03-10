@@ -1,10 +1,10 @@
 #include "annotationfilemanager.h"
-#include "facet.h"
-#include "geometricattribute.h"
-#include "semanticattribute.h"
-#include "surfaceannotation.h"
-#include "lineannotation.h"
-#include "pointannotation.h"
+#include "facet.hpp"
+#include "geometricattribute.hpp"
+#include "semanticattribute.hpp"
+#include "surfaceannotation.hpp"
+#include "lineannotation.hpp"
+#include "pointannotation.hpp"
 #include <iostream>
 #include <fstream>
 #include <vector>
