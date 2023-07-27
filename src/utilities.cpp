@@ -57,18 +57,25 @@ int Utilities::load_shapefile_shp(const std::string filename, std::vector<std::v
     {
         SHPObject *obj = SHPReadObject(hSHP, i);
 
-        boundaries.push_back(std::vector<std::shared_ptr<SemantisedTriangleMesh::Point> > ());
 
-        unsigned int size = obj->nVertices;
-        if(nShapeType == SHPT_POLYGON || nShapeType == SHPT_POLYGONZ)
-            size--;
-        for (int j = 0; j < size; ++j)
+        uint size = obj->nVertices;
+        uint polygonStart = 0;
+        for(uint j = 0; j < obj->nParts; j++)
         {
-            std::shared_ptr<SemantisedTriangleMesh::Point> point =
-                    std::make_shared<SemantisedTriangleMesh::Point>(obj->padfX[j], obj->padfY[j], obj->padfZ[j]);
-            if(j > 0 && *point == *boundaries.at(boundaries.size()-1).at(0))
-                break;
-            boundaries.at(boundaries.size() - 1).push_back(point);
+            boundaries.push_back(std::vector<std::shared_ptr<SemantisedTriangleMesh::Point> > ());
+            uint partSize = 0;
+            if(j < obj->nParts - 1)
+                partSize = obj->panPartStart[j + 1];
+            else
+                partSize = size;
+            partSize -=  obj->panPartStart[j];
+            for(uint k = 0; k < partSize; k++)
+            {
+                uint index = obj->panPartStart[j] + k;
+                std::shared_ptr<SemantisedTriangleMesh::Point> point =
+                        std::make_shared<SemantisedTriangleMesh::Point>(obj->padfX[index], obj->padfY[index], obj->padfZ[index]);
+                boundaries.back().push_back(point);
+            }
         }
 
         SHPDestroyObject(obj);

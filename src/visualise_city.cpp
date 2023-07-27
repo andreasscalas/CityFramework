@@ -29,7 +29,7 @@
 #include <surfaceannotation.hpp>
 #include <lineannotation.hpp>
 #include <pointannotation.hpp>
-#include <annotationfilemanager.h>
+#include <semanticsfilemanager.hpp>
 #include <building.h>
 
 
@@ -136,8 +136,8 @@ namespace {
                     meshVColors->SetName("PColors");
                     for(unsigned int i = 0; i < shadows.at(shadowId).size(); i++)
                     {
-                        bool lightened = shadows.at(shadowId).at(i);
-                        if(!lightened)
+                        bool shadowed = shadows.at(shadowId).at(i);
+                        if(shadowed)
                             meshVColors->InsertNextTypedTuple(BLACK);
                         else
                             meshVColors->InsertNextTypedTuple(WHITE);
@@ -493,7 +493,7 @@ int main(int argc, char *argv[])
     std::vector<std::shared_ptr<Annotation> > emptyAnnotation;
     all_annotations.push_back(emptyAnnotation);
 
-    AnnotationFileManager manager;
+    SemanticsFileManager manager;
     manager.setMesh(mesh);
     for(unsigned int i = 0; i < annotations_files.size(); i++)
     {
@@ -513,7 +513,7 @@ int main(int argc, char *argv[])
             {
                 auto buildingAnnotation = std::dynamic_pointer_cast<SurfaceAnnotation>(annotation);
                 auto building = std::make_shared<Building>();
-                building->setBoundaries(buildingAnnotation->getOutlines());
+                building->setOutlines(buildingAnnotation->getOutlines());
                 building->setId(std::to_string(reachedId++));
             }
         }

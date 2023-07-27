@@ -1,5 +1,4 @@
 ﻿
-#include "iostream"
 #include <fstream>
 #include <string>
 #include <cstdlib>
@@ -10,23 +9,22 @@
 #include <liblas/liblas.hpp>
 
 
-#include <document.h>
-#include <filereadstream.h>
-#include <coordsconverter.h>
+#include <rapidjson/filereadstream.h>
+#include <rapidjson/document.h>
+#include <rapidjson/stringbuffer.h>
+#include <rapidjson/writer.h>
 
-#include "annotationfilemanager.h"
-#include "lineannotation.hpp"
-#include "geotiff.h"
-#include "nanoflann.hpp"
+#include <coordsconverter.h>
+#include <semanticsfilemanager.hpp>
+#include <lineannotation.hpp>
 #include "utilities.h"
-#include "building.h"
-#include "buildingsgroup.h"
+
 static unsigned char BLUE[3] =   {0,0,255};
 static const int BUFFER_SIZE = 65536;
 using namespace SemantisedTriangleMesh;
 
 
-int readLiDAR(std::string filename, std::vector<std::shared_ptr<SemantisedTriangleMesh::Point> > &points)
+int readLiDAR(std::string filename, std::vector<liblas::Point> &points)
 {
 
     std::ifstream ifs;
@@ -45,16 +43,8 @@ int readLiDAR(std::string filename, std::vector<std::shared_ptr<SemantisedTriang
 
         while (reader.ReadNextPoint())
         {
-            liblas::Point const& p = reader.GetPoint();
-            auto p_ = std::make_shared<SemantisedTriangleMesh::Point>(p.GetX(), p.GetY(), p.GetZ());
-            std::string s = p.GetClassification().GetClassName();
-            auto p_2d = *p_;
-            p_2d.setZ(0);
-
-            if (p.GetReturnNumber() == 1)
-            {
-                points.push_back(p_);
-            }
+            liblas::Point p = reader.GetPoint();
+            points.push_back(p);
         }
 
         ifs.close();
@@ -63,6 +53,37 @@ int readLiDAR(std::string filename, std::vector<std::shared_ptr<SemantisedTriang
     }
     return -1;
 
+}
+
+int writeLidar(std::string inputFilename, std::string outputFilename, std::vector<liblas::Point> points, std::vector<uint> pointsIndices)
+{
+    std::ifstream ifs;
+    std::ofstream ofs;
+    ifs.open(inputFilename, std::ios::in | std::ios::binary);
+    ofs.open(outputFilename, std::ios::out | std::ios::binary);
+
+    if(ifs.is_open() && ofs.is_open())
+    {
+        liblas::ReaderFactory f;
+        std::string s;
+        liblas::Reader reader = f.CreateWithStream(ifs);
+        liblas::Header header = reader.GetHeader();
+        header.SetPointRecordsCount(pointsIndices.size());
+        liblas::Writer writer(ofs, header);
+
+
+        for(uint i = 0; i < pointsIndices.size(); i++)
+        {
+            liblas::Point lidarPoint = points.at(pointsIndices[i]);
+            writer.WritePoint(lidarPoint);
+
+        }
+
+        ifs.close();
+        ofs.close();
+        return 0;
+    }
+    return -1;
 }
 
 int main(int argc, char *argv[])
@@ -165,7 +186,7 @@ int main(int argc, char *argv[])
 
 
 
-//    AnnotationFileManager manager;
+//    SemanticsFileManager manager;
 //    manager.setMesh(mesh);
 //    manager.writeAnnotations(shortestPathAnnotationFile);
 //    mesh.reset();
@@ -422,117 +443,185 @@ int main(int argc, char *argv[])
     mesh->save("provina.ply", 15);
     delete mesh;*/
 
-    std::vector<std::shared_ptr<SemantisedTriangleMesh::Point> > points;
+//    std::vector<std::shared_ptr<SemantisedTriangleMesh::Point> > points;
+//    std::string filename = argv[1];
+//    auto retValue = readLiDAR(filename, points);
+//    if(retValue != 0)
+//        exit(retValue);
+
+//    GDALAllRegister();
+//    CPLPushErrorHandler(CPLQuietErrorHandler);
+//    GDALDataset *geotiffDataset;
+//    GDALDriver *driverGeotiff;
+//    GDALRasterBand *geotiffBand;
+//    double minX = std::numeric_limits<double>::max();
+//    double minY = std::numeric_limits<double>::max();
+//    double maxX = -std::numeric_limits<double>::max();
+//    double maxY = -std::numeric_limits<double>::max();
+//    for(auto p : points)
+//    {
+//        if(p->getX() < minX)
+//            minX = p->getX();
+//        if(p->getX() > maxX)
+//            maxX = p->getX();
+//        if(p->getY() < minY)
+//            minY = p->getY();
+//        if(p->getY() > maxY)
+//            maxY = p->getY();
+//    }
+//    uint imageXResolution = std::ceil(maxX - minX);
+//    uint imageYResolution = std::ceil(maxY - minY);
+//    double transform[6] = {minX, 1, 0, maxY, 0, 1};
+//    double** heights = static_cast<double**>(malloc(imageYResolution * sizeof (double*)));
+//    uint** heights_count = static_cast<uint**>(malloc(imageYResolution * sizeof (uint*)));
+//    for(uint i = 0; i < imageYResolution; i++)
+//    {
+//        heights[i] = static_cast<double*>(malloc(imageXResolution * sizeof(double)));
+//        heights_count[i] = static_cast<uint*>(malloc(imageXResolution * sizeof(uint)));
+//    }
+
+//    for(auto p : points)
+//    {
+//        uint i = imageYResolution - (std::floor(p->getY() - minY) + 1);
+//        uint j = std::floor(p->getX() - minX);
+//        heights[i][j] += p->getZ();
+//        heights_count[i][j]++;
+//    }
+
+//    for(uint i = 0; i < imageYResolution; i++)
+//        for(uint j = 0; j < imageXResolution; j++)
+//            if(heights_count[i][j] > 0)
+//                heights[i][j] /= heights_count[i][j];
+//            else
+//            {
+//                double height = 0;
+//                uint count = 0;
+//                if(i > 0 && heights_count[i - 1][j] > 0)
+//                {
+//                    height += heights[i - 1][j];
+//                    count++;
+//                }
+//                if(i < imageYResolution && heights_count[i + 1][j] > 0)
+//                {
+//                    height += heights[i + 1][j];
+//                    count++;
+//                }
+//                if(j > 0 && heights_count[i][j - 1] > 0)
+//                {
+//                    height += heights[i][j - 1];
+//                    count++;
+//                }
+//                if(j < imageXResolution && heights_count[i][j + 1] > 0)
+//                {
+//                    height += heights[i][j+1];
+//                    count++;
+//                }
+//                if(count > 0)
+//                    height /= count;
+//                else
+//                    exit(8);
+//                heights[i][j] = height;
+//            }
+
+
+//    std::string geoTiffFilename = "Catania_DSM.tif";
+//    driverGeotiff = GetGDALDriverManager()->GetDriverByName("GTiff");
+//    geotiffDataset = driverGeotiff->Create(geoTiffFilename.c_str(),imageXResolution, imageYResolution, 1, GDT_Float32,NULL);
+//    geotiffDataset->SetGeoTransform(transform);
+
+//    geotiffDataset->SetProjection("EPSG:32633");
+//    float *rowBuff = (float*) CPLMalloc(sizeof(float) * imageXResolution);
+
+//      /* iterate through all pixels in 2D dBZ
+//       * reflectivity array and assign values into rowBuff
+//       * array. Then write each row into Geotiff object.
+//       */
+
+//    for(int row = 0; row < imageYResolution; row++) {
+//        for(int col = 0; col < imageXResolution; col++) {
+//            rowBuff[col] = (float)heights[row][col];
+//        }
+//        geotiffDataset->GetRasterBand(1)->RasterIO(GF_Write, 0, row, imageXResolution, 1, rowBuff, imageXResolution, 1, GDT_Float32, 0, 0);
+//    }
+
+//    GDALClose(geotiffDataset) ;
+//    GDALDestroyDriverManager();
+//    for(uint i = 0; i < imageYResolution; i++)
+//    {
+//        free(heights[i]);
+//        free(heights_count[i]);
+//    }
+//    free(heights);
+//    free(heights_count);
+
     std::string filename = argv[1];
+    std::vector<std::vector<uint> > pointClouds;
+    std::vector<liblas::Point> points;
     auto retValue = readLiDAR(filename, points);
     if(retValue != 0)
         exit(retValue);
 
-    GDALAllRegister();
-    CPLPushErrorHandler(CPLQuietErrorHandler);
-    GDALDataset *geotiffDataset;
-    GDALDriver *driverGeotiff;
-    GDALRasterBand *geotiffBand;
-    double minX = std::numeric_limits<double>::max();
-    double minY = std::numeric_limits<double>::max();
-    double maxX = -std::numeric_limits<double>::max();
-    double maxY = -std::numeric_limits<double>::max();
-    for(auto p : points)
+    std::string json_directory = argv[2];
+    if(json_directory.at(json_directory.size() - 1) != '/')
+        json_directory.append("/");
+    std::vector<std::string> json_files = Utilities::globVector(json_directory+"*.json");
+    uint total_points = 0;
+    for(unsigned int i = 0; i < json_files.size(); i++)
     {
-        if(p->getX() < minX)
-            minX = p->getX();
-        if(p->getX() > maxX)
-            maxX = p->getX();
-        if(p->getY() < minY)
-            minY = p->getY();
-        if(p->getY() > maxY)
-            maxY = p->getY();
-    }
-    uint imageXResolution = std::ceil(maxX - minX);
-    uint imageYResolution = std::ceil(maxY - minY);
-    double transform[6] = {minX, 1, 0, maxY, 0, 1};
-    double** heights = static_cast<double**>(malloc(imageYResolution * sizeof (double*)));
-    uint** heights_count = static_cast<uint**>(malloc(imageYResolution * sizeof (uint*)));
-    for(uint i = 0; i < imageYResolution; i++)
-    {
-        heights[i] = static_cast<double*>(malloc(imageXResolution * sizeof(double)));
-        heights_count[i] = static_cast<uint*>(malloc(imageXResolution * sizeof(uint)));
-    }
+        FILE* fp = fopen(json_files[i].c_str(),"r");
+        if(fp != nullptr)
+        {
+            char buffer[BUFFER_SIZE];
+            rapidjson::FileReadStream frs(fp, buffer, sizeof (buffer));
 
-    for(auto p : points)
-    {
-        uint i = imageYResolution - (std::floor(p->getY() - minY) + 1);
-        uint j = std::floor(p->getX() - minX);
-        heights[i][j] += p->getZ();
-        heights_count[i][j]++;
-    }
+            rapidjson::Document document;
+            std::string id, description, file;
+            uint startRecord = 0, numRecords = 0;
+            if((document.ParseStream(frs).HasParseError()))
+                exit(1);
 
-    for(uint i = 0; i < imageYResolution; i++)
-        for(uint j = 0; j < imageXResolution; j++)
-            if(heights_count[i][j] > 0)
-                heights[i][j] /= heights_count[i][j];
-            else
+            if(!(document.HasMember("ID") && document["ID"].IsUint()))
+                exit(2);
+
+            id = std::to_string(document["ID"].GetUint());
+            if(!(document.HasMember("description") && document["description"].IsString()))
+                exit(3);
+
+            description = document["description"].GetString();
+
+            if(!(document.HasMember("las_blocks") && document["las_blocks"].IsArray()))
+                exit(4);
+            rapidjson::Value& blocksList = document["las_blocks"];
+            for (rapidjson::SizeType j = 0; j < blocksList.Size(); j++) // rapidjson uses SizeType instead of size_t.
             {
-                double height = 0;
-                uint count = 0;
-                if(i > 0 && heights_count[i - 1][j] > 0)
-                {
-                    height += heights[i - 1][j];
-                    count++;
-                }
-                if(i < imageYResolution && heights_count[i + 1][j] > 0)
-                {
-                    height += heights[i + 1][j];
-                    count++;
-                }
-                if(j > 0 && heights_count[i][j - 1] > 0)
-                {
-                    height += heights[i][j - 1];
-                    count++;
-                }
-                if(j < imageXResolution && heights_count[i][j + 1] > 0)
-                {
-                    height += heights[i][j+1];
-                    count++;
-                }
-                if(count > 0)
-                    height /= count;
-                else
+                std::vector<uint> pointCloud;
+                pointCloud.clear();
+                rapidjson::Value& jsonBlock = blocksList[j];
+                if(!jsonBlock.IsObject())
+                    exit(5);
+                if(!(jsonBlock.HasMember("file") && jsonBlock["file"].IsString()))
+                    exit(6);
+                file = jsonBlock["file"].GetString();
+                if(!(jsonBlock.HasMember("start_record") && jsonBlock["start_record"].IsUint()))
+                    exit(7);
+                startRecord = jsonBlock["start_record"].GetUint();
+                if(!(jsonBlock.HasMember("num_records") && jsonBlock["num_records"].IsUint()))
                     exit(8);
-                heights[i][j] = height;
+                numRecords = jsonBlock["num_records"].GetUint();
+                for(uint k = 0; k < numRecords; k++)
+                    pointCloud.push_back(startRecord + k);
+                total_points += numRecords;
+
+                std::string s = "./point_clouds/output";
+                s.append(id);
+                s.append(".las");
+                writeLidar(filename, s, points, pointCloud);
+
             }
-
-
-    std::string geoTiffFilename = "Catania_DSM.tif";
-    driverGeotiff = GetGDALDriverManager()->GetDriverByName("GTiff");
-    geotiffDataset = driverGeotiff->Create(geoTiffFilename.c_str(),imageXResolution, imageYResolution, 1, GDT_Float32,NULL);
-    geotiffDataset->SetGeoTransform(transform);
-
-    geotiffDataset->SetProjection("EPSG:32633");
-    float *rowBuff = (float*) CPLMalloc(sizeof(float) * imageXResolution);
-
-      /* iterate through all pixels in 2D dBZ
-       * reflectivity array and assign values into rowBuff
-       * array. Then write each row into Geotiff object.
-       */
-
-    for(int row = 0; row < imageYResolution; row++) {
-        for(int col = 0; col < imageXResolution; col++) {
-            rowBuff[col] = (float)heights[row][col];
+            delete fp;
         }
-        geotiffDataset->GetRasterBand(1)->RasterIO(GF_Write, 0, row, imageXResolution, 1, rowBuff, imageXResolution, 1, GDT_Float32, 0, 0);
     }
-
-    GDALClose(geotiffDataset) ;
-    GDALDestroyDriverManager();
-    for(uint i = 0; i < imageYResolution; i++)
-    {
-        free(heights[i]);
-        free(heights_count[i]);
-    }
-    free(heights);
-    free(heights_count);
-
+    std::cout << total_points;
 
 
     return 0;

@@ -2,24 +2,26 @@
 #define CITYGMLCORE_H
 
 #include "building.h"
+#include "buildingsgroup.h"
+#include "geotiff.h"
 
-#include "TriangleMesh.hpp"
-#include "node.h"
-#include "way.h"
-#include "relation.h"
+#include <TriangleMesh.hpp>
+#include <node.h>
+#include <way.h>
+#include <relation.h>
 
 #include <vector>
 #include <string>
 
-#include <geotiff.h>
 #include <root.h>
+#include <set>
 
 typedef unsigned int uint;
 class CityGMLCore
 {
 public:
     CityGMLCore();
-    CityGMLCore(std::string, std::string, std::string, std::string lidarFilename, std::string);
+    CityGMLCore(std::string, std::string, std::string);
 
     int buildLevel(uint level = 0);
 
@@ -60,29 +62,20 @@ public:
 
     bool arePolygonsAdjacent(VertexList, VertexList) const;
 
-    VertexList createDTMVertices(double scale_factor = 1.0, SemantisedTriangleMesh::Point origin = SemantisedTriangleMesh::Point(0,0,0));
-
-    std::vector<std::vector<std::pair<unsigned int, unsigned int> > > extractBuildingsHeights(bool is_dtm_tiff, double scale_factor, SemantisedTriangleMesh::Point origin);
-    std::vector<std::vector<double> > extractBuildingsHeightsFromLidar(/*bool isDTM, */double scale_factor, SemantisedTriangleMesh::Point origin);
+    std::vector<std::vector<double> > extractBuildingsHeightsFromLidar(double scale_factor = 1.0, SemantisedTriangleMesh::Point origin = SemantisedTriangleMesh::Point(0,0,0));
 
     void associateElevations(std::vector<std::vector<VertexList> > triangulationHoles, std::vector<VertexList> streetsArcsPoints);
 
     //Getters and setters
     std::string getOsmFilename() const;
     void setOsmFilename(const std::string &value);
-    std::string getDtmFilename() const;
-    void setDtmFilename(const std::string &value);
-    std::string getDsmFilename() const;
-    void setDsmFilename(const std::string &value);
-
     void setLevel(uint level, std::string meshFileName, std::string annotationFileName);
 
-    VertexList createLiDARDTMVertices();
     void removeAlreadyExistingPoints(std::vector<std::vector<VertexList> > boundaries, std::vector<VertexList > arcs);
     bool isPointOutsideBounds(const std::shared_ptr<SemantisedTriangleMesh::Point> p);
 
 private:
-    std::string osmFilename, dtmFilename, dsmFilename;
+    std::string osmFilename;
     //Lists of entities loaded from the OSM file
     OpenStreetMap::Root osm;
 
@@ -90,16 +83,13 @@ private:
     std::vector<std::string> streetsArcs;
     std::vector<std::shared_ptr<Building> > buildings;
     std::vector<std::vector<std::shared_ptr<SemantisedTriangleMesh::Point> > >  bounds;
-    //std::vector<std::vector<std::pair<uint, uint> > > pixelToBuildingAssociation;
 
     std::map<OpenStreetMap::Point*, std::shared_ptr<SemantisedTriangleMesh::Vertex> > osmPointToMeshPointMap;
     std::vector<std::shared_ptr<SemantisedTriangleMesh::Point> > lidarDTMPoints, lidarDSMPoints;
 
     std::shared_ptr<SemantisedTriangleMesh::TriangleMesh> meshes[5];
 
-    std::shared_ptr<GeoTiff> dtm, dsm;
-
-    bool osmIsLoaded, dtmIsLoaded, dsmIsLoaded;
+    bool osmIsLoaded;
 
 
     int buildLevel0();
@@ -108,6 +98,18 @@ private:
     void setLevel0(std::string meshFileName, std::string annotationFileName);
     void setLevel1(std::string meshFileName, std::string annotationFileName);
 
+    void calculateMinMax(SemantisedTriangleMesh::Point &min, SemantisedTriangleMesh::Point &max);
+    void normalizePoints(std::vector<std::shared_ptr<SemantisedTriangleMesh::Point> > &points, const std::shared_ptr<SemantisedTriangleMesh::Point> &origin, double city_size);
+    void filterNodesOutsideBounds();
+    void processOpenStreetMapWays();
+    void processRelations(std::set<std::string> &usedWays);
+    void processBuildingWays(std::set<std::string> &usedWays);
+    void preProcessBuildings();
+    void groupBuildings(std::vector<std::shared_ptr<BuildingsGroup> > &groups);
+    void generateVertices(std::vector<VertexList> &arcsPoints);
+    void processBuildingsGroups(std::vector<std::shared_ptr<BuildingsGroup> > &groups, std::vector<std::vector<VertexList> > &triangulationHoles, std::set<std::string>& usedBuildings);
+    VertexList createLiDARDTMVertices();
+    void reInsertStreetsClippings(std::vector<std::pair<uint, uint> > keptClippings, std::vector<VertexList >& arcsPoints);
 };
 
 #endif // CITYGMLCORE_H

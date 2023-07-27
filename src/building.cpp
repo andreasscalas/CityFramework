@@ -2,6 +2,7 @@
 
 #include <map>
 #include <algorithm>
+#include <utilities.h>
 
 using namespace SemantisedTriangleMesh;
 typedef unsigned int uint;
@@ -11,32 +12,14 @@ Building::Building()
 
 }
 
-std::vector<VertexList> Building::getBoundaries() const
-{
-    return boundaries;
-}
-
-void Building::setBoundaries(const std::vector<VertexList> &value)
-{
-    boundaries = value;
-}
-
 void Building::addOuterBoundary(const VertexList boundary)
 {
-    boundaries.insert(boundaries.begin(), boundary);
+    outlines.insert(outlines.begin(), boundary);
 }
 
 void Building::addInnerBoundary(const VertexList boundary)
 {
-    boundaries.push_back(boundary);
-}
-
-bool Building::removeBoundary(uint pos)
-{
-    if(pos >= boundaries.size())
-        return false;
-    boundaries.erase(boundaries.begin() + pos);
-    return true;
+    outlines.push_back(boundary);
 }
 
 std::vector<std::shared_ptr<Building> > Building::getAdjacentBuildings() const
@@ -63,10 +46,29 @@ bool Building::removeAdjacentBuilding(uint pos)
 
 }
 
+//Still under development
+double Building::computeSurfaceAreaToVolumeRatio()
+{
+    double ratio = 0;
+    for(auto adjacent : getAdjacentBuildings())
+    {
+        auto adjacentExterior = adjacent->getOutlines().at(0);
+        std::reverse(adjacentExterior.begin(), adjacentExterior.end());
+        for(uint i = 0; i < outlines.at(0).size(); i++)
+        {
+            for(uint j = 0; j < adjacentExterior.size(); j++)
+            {
+
+            }
+        }
+    }
+    return ratio;
+}
+
 void Building::fixBoundaries()
 {
 
-    for(auto iit = boundaries.begin(); iit != boundaries.end(); iit++)
+    for(auto iit = outlines.begin(); iit != outlines.end(); iit++)
     {
         auto boundary = *iit;
         for(auto jit = boundary.begin(); jit != boundary.begin() + boundary.size() - 2; jit++)
@@ -94,7 +96,7 @@ void Building::fixBoundaries()
         }
         if(boundary.size() < 4)
         {
-            iit = boundaries.erase(iit);
+            iit = outlines.erase(iit);
             iit--;
         }
 
@@ -157,11 +159,11 @@ std::vector<VertexList> Building::mergeWithAdjacent(std::string adjID)
                               [adjID](std::shared_ptr<Building> b) { return b->getId().compare(adjID) == 0;});
     if(adjIt != adjacentBuildings.end())
     {
-        VertexList newBoundary = mergeBoundaries(boundaries.at(0), (*adjIt)->getBoundaries().at(0));
+        VertexList newBoundary = mergeBoundaries(outlines.at(0), (*adjIt)->getOutlines().at(0));
         if(newBoundary.size() != 0)
         {
             newBoundaries.push_back(newBoundary);
-            newBoundaries.insert(newBoundaries.end(), boundaries.begin() + 1, boundaries.end());
+            newBoundaries.insert(newBoundaries.end(), outlines.begin() + 1, outlines.end());
         }
 
     }
@@ -172,28 +174,18 @@ std::vector<VertexList> Building::mergeWithAdjacent(std::string adjID)
 
 std::vector<VertexList> Building::mergeWithAllAdjacents()
 {
-    std::vector<VertexList> newBoundaries = boundaries;
+    std::vector<VertexList> newBoundaries = outlines;
     for(auto b : adjacentBuildings)
     {
-        VertexList newBoundary = mergeBoundaries(newBoundaries.at(0), b->getBoundaries().at(0));
+        VertexList newBoundary = mergeBoundaries(newBoundaries.at(0), b->getOutlines().at(0));
         if(newBoundary.size() != 0)
         {
             newBoundaries.at(0) = newBoundary;
-            for(auto p = b->getBoundaries().begin() + 1; p != b->getBoundaries().end(); p++)
+            for(auto p = b->getOutlines().begin() + 1; p != b->getOutlines().end(); p++)
                 newBoundaries.push_back(*p);
         }
     }
 
     return newBoundaries;
 
-}
-
-std::string Building::getId() const
-{
-    return id;
-}
-
-void Building::setId(const std::string &value)
-{
-    id = value;
 }

@@ -1,20 +1,18 @@
-#include "annotationfilemanager.h"
-#include "surfaceannotation.hpp"
-#include "coordsconverter.h"
-#include "utilities.h"
-#include "geotiff.h"
-
 #include <iostream>
 #include <map>
 #include <string>
 #include <sstream>
-#include <filereadstream.h>
 #include <iomanip>
 #include <fstream>
+#include <rapidjson/filereadstream.h>
+#include <rapidjson/document.h>
 
+#include <semanticsfilemanager.hpp>
+#include <surfaceannotation.hpp>
 #include <KDTree.hpp>
-#include <document.h>
 
+#include "coordsconverter.h"
+#include "utilities.h"
 
 using namespace std;
 using namespace SemantisedTriangleMesh;
@@ -42,7 +40,7 @@ int main(int argc, char *argv[])
     uint hour = atoi(argv[4]), minute = atoi(argv[5]);
     std::shared_ptr<TriangleMesh> mesh = std::make_shared<TriangleMesh>();
     mesh->load(argv[1]);
-    AnnotationFileManager manager;
+    SemanticsFileManager manager;
     manager.setMesh(mesh);
     manager.readAnnotations(argv[2]);
     std::vector<std::shared_ptr<Annotation> > annotations = mesh->getAnnotations();

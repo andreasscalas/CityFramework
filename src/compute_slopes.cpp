@@ -1,8 +1,8 @@
-#include "TriangleMesh.hpp"
-#include "annotationfilemanager.h"
-#include "pointannotation.hpp"
-#include "lineannotation.hpp"
-#include "semanticattribute.hpp"
+#include <TriangleMesh.hpp>
+#include <semanticsfilemanager.hpp>
+#include <pointannotation.hpp>
+#include <lineannotation.hpp>
+#include <semanticattribute.hpp>
 #include "utilities.h"
 #include <fstream>
 #include <chrono>
@@ -41,7 +41,7 @@ int main(int argc, char* argv[])
     double overall_min_slope = 0;
     double overall_max_slope = 0.261799;
 
-    AnnotationFileManager manager;
+    SemanticsFileManager manager;
     manager.setMesh(mesh);
     std::cout << "Reading annotations." << std::endl << std::flush;
     std::vector<std::shared_ptr<Annotation> > all_annotations = manager.readAndStoreAnnotations(argv[2]);
@@ -197,6 +197,7 @@ int main(int argc, char* argv[])
                 {
                     projected /= projected.norm();
                     angle = v.computeAngle(projected);
+                    angle = angle * 180 / M_PI;
                     if(p2->getZ() < p1->getZ())
                         angle *= -1;
                     if(angle < min_slope)
@@ -207,31 +208,36 @@ int main(int argc, char* argv[])
                 }
 
                 angle = abs(angle);
-                if(angle >= 0 && angle < 0.01745330748016422)
+                if(angle >= 0 && angle < 2)
                 {
                     color[0] = green[0];
                     color[1] = green[1];
                     color[2] = green[2];
-                }else if(angle >= 0.01745330748016422 && angle < 0.034906615)
+                }else if(angle >= 2 && angle < 5)
                 {
                     color[0] = yellowgreen[0];
                     color[1] = yellowgreen[1];
                     color[2] = yellowgreen[2];
-                }else if(angle >= 0.034906615 && angle < 0.06981323)
+                }else if(angle >= 5 && angle < 10)
                 {
                     color[0] = yellow[0];
                     color[1] = yellow[1];
                     color[2] = yellow[2];
-                }else if(angle >= 0.06981323 && angle < 0.13962646)
+                }else if(angle >= 10 && angle < 20)
                 {
                     color[0] = orange[0];
                     color[1] = orange[1];
                     color[2] = orange[2];
-                }else if(angle >= 0.13962646 && angle < 0.27925292)
+                }else if(angle >= 20 && angle < 25)
                 {
                     color[0] = salmon[0];
                     color[1] = salmon[1];
                     color[2] = salmon[2];
+                } else if(angle >= 25 && angle < 30)
+                {
+                    color[0] = red[0];
+                    color[1] = red[1];
+                    color[2] = red[2];
                 } else
                 {
                     color[0] = violet[0];
@@ -240,7 +246,7 @@ int main(int argc, char* argv[])
                 }
 
                 std::shared_ptr<LineAnnotation> segment = std::make_shared<LineAnnotation>();
-                segment->setId(segments_counter);
+                segment->setId(std::to_string(segments_counter));
                 segment->setTag("street edge n° " + std::to_string(segments_counter++));
                 segment->setColor(color);
                 std::vector<std::shared_ptr<Vertex> > polyline;
@@ -291,31 +297,36 @@ int main(int argc, char* argv[])
         unsigned char color[3] = {0,0,0};
         full_path_slope = abs(full_path_slope / (nodes.size() - 1));
 
-        if(full_path_slope >= 0 && full_path_slope < 0.01745330748016422)
+        if(full_path_slope >= 0 && full_path_slope < 2)
         {
             color[0] = green[0];
             color[1] = green[1];
             color[2] = green[2];
-        }else if(full_path_slope >= 0.01745330748016422 && full_path_slope < 0.034906615)
+        }else if(full_path_slope >= 2 && full_path_slope < 5)
         {
             color[0] = yellowgreen[0];
             color[1] = yellowgreen[1];
             color[2] = yellowgreen[2];
-        }else if(full_path_slope >= 0.034906615 && full_path_slope < 0.06981323)
+        }else if(full_path_slope >= 5 && full_path_slope < 10)
         {
             color[0] = yellow[0];
             color[1] = yellow[1];
             color[2] = yellow[2];
-        }else if(full_path_slope >= 0.06981323 && full_path_slope < 0.13962646)
+        }else if(full_path_slope >= 10 && full_path_slope < 20)
         {
             color[0] = orange[0];
             color[1] = orange[1];
             color[2] = orange[2];
-        }else if(full_path_slope >= 0.13962646 && full_path_slope < 0.27925292)
+        }else if(full_path_slope >= 20 && full_path_slope < 25)
         {
             color[0] = salmon[0];
             color[1] = salmon[1];
             color[2] = salmon[2];
+        }else if(full_path_slope >= 25 && full_path_slope < 30)
+        {
+            color[0] = red[0];
+            color[1] = red[1];
+            color[2] = red[2];
         } else
         {
             color[0] = violet[0];
@@ -323,7 +334,7 @@ int main(int argc, char* argv[])
             color[2] = violet[2];
         }
         std::shared_ptr<LineAnnotation> street_annotation = std::make_shared<LineAnnotation>();
-        street_annotation->setId(streets_counter);
+        street_annotation->setId(std::to_string(streets_counter));
         street_annotation->setTag("street edge n° " + std::to_string(streets_counter++));
         street_annotation->setColor(color);
         street_annotation->addPolyLine(polylines.at(0));

@@ -1,7 +1,7 @@
 #include <rapidjson/filereadstream.h>
 #include <rapidjson/document.h>
 #include <rapidjson/stringbuffer.h>
-#include <annotationfilemanager.h>
+#include <semanticsfilemanager.hpp>
 #include <utilities.h>
 #include <graph.h>
 #include <lineannotation.hpp>
@@ -25,7 +25,7 @@ int main(int argc, char* argv[])
     bool orienteering = strcmp(argv[1], "orienteering") == 0;
     auto mesh = std::make_shared<TriangleMesh>();
     mesh->load(argv[2]);
-    AnnotationFileManager manager;
+    SemanticsFileManager manager;
     manager.setMesh(mesh);
     manager.readAnnotations(argv[3]);
     std::vector<std::vector<ulong> >  itineraries;
@@ -121,7 +121,7 @@ int main(int argc, char* argv[])
     for(uint i = 0; i < itineraries.size(); i++)
     {
         std::shared_ptr<LineAnnotation> annotation = std::make_shared<LineAnnotation>();
-        annotation->setId(i);
+        annotation->setId(std::to_string(i));
         annotation->setTag("itinerary_" + std::to_string(i));
         auto startingID = itineraries.at(i).at(0);
         auto closingID = itineraries.at(i).back();

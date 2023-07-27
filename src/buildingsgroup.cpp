@@ -53,8 +53,8 @@ void BuildingsGroup::computeAdjacencyGraph()
         {
             uint adjacenciesCounter = 0;
             bool adjacencyBegun = false;
-            auto boundaries1 = building->getBoundaries();
-            auto boundaries2 = adjacent->getBoundaries();
+            auto boundaries1 = building->getOutlines();
+            auto boundaries2 = adjacent->getOutlines();
             bool modified = false;
             std::vector<std::pair<uint, uint> > adjacenciesIndexes;
             uint begin, end;
@@ -90,7 +90,7 @@ void BuildingsGroup::computeAdjacencyGraph()
                 }
             }
             if(modified)
-                adjacent->setBoundaries(boundaries2);
+                adjacent->setOutlines(boundaries2);
             auto a = new GraphTemplate::Arc<std::shared_ptr<Building> >();
             a->setN1(buildingIdToNode.at(building->getId()));
             a->setN2(buildingIdToNode.at(adjacent->getId()));
@@ -117,7 +117,7 @@ std::vector<VertexList> BuildingsGroup::extractOverallBasePolygon()
     for(auto building : buildings)
     {
         uint position = 0;
-        auto boundary = building->getBoundaries()[0];
+        auto boundary = building->getOutlines()[0];
         for(uint i = 0; i < boundary.size() - 1; i++)
         {
             auto point = boundary.at(i);
@@ -154,7 +154,7 @@ std::vector<VertexList> BuildingsGroup::extractOverallBasePolygon()
                 });
     for(auto segment : it->second)
     {
-        auto p = buildings.at(segment.first)->getBoundaries()[0].at(segment.second + 1);
+        auto p = buildings.at(segment.first)->getOutlines()[0].at(segment.second + 1);
         if(p->getX() < minX)
         {
             minX = p->getX();
@@ -178,7 +178,7 @@ std::vector<VertexList> BuildingsGroup::extractOverallBasePolygon()
         double maxAngle = -std::numeric_limits<double>::max();
         for(auto segment : segments)
         {
-            auto p = buildings.at(segment.first)->getBoundaries()[0].at(segment.second + 1);
+            auto p = buildings.at(segment.first)->getOutlines()[0].at(segment.second + 1);
 
             double p1z = p1->getZ();
             double p2z = p2->getZ();
@@ -202,7 +202,7 @@ std::vector<VertexList> BuildingsGroup::extractOverallBasePolygon()
         {
             auto segment = segments.at(chosen);
             p1 = p2;
-            p2 = buildings.at(segment.first)->getBoundaries()[0].at(segment.second + 1);
+            p2 = buildings.at(segment.first)->getOutlines()[0].at(segment.second + 1);
         } else
         {
             std::cerr << "IMPOSSIBLE: no segment is selected as next candidate for exterior boundary extraction" << std::endl;
@@ -215,8 +215,8 @@ std::vector<VertexList> BuildingsGroup::extractOverallBasePolygon()
 
     for(auto building : buildings)
     {
-        auto boundaries = building->getBoundaries();
-        if(building->getBoundaries().size() > 1)
+        auto boundaries = building->getOutlines();
+        if(building->getOutlines().size() > 1)
             overallBasePolygons.insert(overallBasePolygons.end(), boundaries.begin() + 1, boundaries.end());
     }
 

@@ -1,0 +1,14 @@
+{
+    "other":"settings",
+    "cmake.configureArgs": [
+        "-DSHAPELIB_H:PATH=/usr/local/include/",
+        "-DRAPIDJSON_H:PATH=/usr/include/rapidjson",
+        "-DDATA_STRUCTURES_H:PATH=/home/andreas/Documenti/Progetti/DataStructures/include",
+        "-DDATA_STRUCTURES_LIB:PATH=/home/andreas/Documenti/Progetti/DataStructures/build/libDataStructures.a",
+        "-DTINYXML_H:PATH=/usr/local/include",
+        "-DTINYXML_LIB:PATH=/usr/local/lib/libtinyxml2.a",
+        "-DKDTree_LIB=/home/andreas/Documenti/Progetti/KDTree/build/lib/libKDTree.so",
+        "-DKDTree_H=/home/andreas/Documenti/Progetti/KDTree/"
+       ],
+   }
+   

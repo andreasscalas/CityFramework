@@ -6,9 +6,6 @@
 #include "lineannotation.hpp"
 #include "pointannotation.hpp"
 #include "semanticattribute.hpp"
-#include "coordsconverter.h"
-#include "buildingsgroup.h"
-#include "annotationfilemanager.h"
 
 #include <OSMManager-1.0/coordinatesconverter.h>
 
@@ -20,6 +17,7 @@
 #include <liblas/liblas.hpp>
 #include <shapefil.h>
 #include <KDTree.hpp>
+#include <semanticsfilemanager.hpp>
 
 using namespace std::chrono;
 using namespace SemantisedTriangleMesh;
@@ -45,7 +43,6 @@ PointList vertexToPointList(VertexList vertices)
 
 CityGMLCore::CityGMLCore()
 {
-
     buildingsArcs.clear();
     streetsArcs.clear();
     buildings.clear();
@@ -54,18 +51,12 @@ CityGMLCore::CityGMLCore()
     lidarDTMPoints.clear();
     lidarDSMPoints.clear();
     osmIsLoaded = false;
-    dtmIsLoaded = false;
-    dsmIsLoaded = false;
     osmFilename = "";
-    dtmFilename = "";
-    dsmFilename = "";
 }
 
-CityGMLCore::CityGMLCore(std::string osmFilename, std::string dtmFilename, std::string dsmFilename, std::string lidarFilename, std::string boundsFile)
+CityGMLCore::CityGMLCore(std::string osmFilename, std::string lidarFilename, std::string boundsFile)
 {
     this->osmFilename = osmFilename;
-    this->dtmFilename = dtmFilename;
-    this->dsmFilename = dsmFilename;
 
     //int retValue = loadOSM(osmFilename, nodes, arcs, relations);
     int retValue = osm.load(osmFilename);
@@ -87,20 +78,6 @@ CityGMLCore::CityGMLCore(std::string osmFilename, std::string dtmFilename, std::
 
     std::cout << "Loading DTM" << std::endl;
 
-    dtm = std::make_shared<GeoTiff>(dtmFilename.c_str());
-    if(dtm != nullptr)
-        dtmIsLoaded = true;
-    else
-        std::cerr << "Error loading DTM file" << std::endl;
-
-    std::cout << "Loading DSM" << std::endl;
-    dsm = std::make_shared<GeoTiff>(dsmFilename.c_str());
-    if(dsm != nullptr)
-        dsmIsLoaded = true;
-    else
-        std::cerr << "Error loading DSM file" << std::endl;
-
-
     Utilities::load_shapefile_shp(boundsFile, bounds);
 
     std::vector<std::string> allowedClasses = {"ground", "building"};
@@ -119,53 +96,6 @@ CityGMLCore::CityGMLCore(std::string osmFilename, std::string dtmFilename, std::
 
 }
 
-//int CityGMLCore::readLiDAR(std::string filename)
-//{
-
-//    std::ifstream ifs;
-//    ifs.open(filename, std::ios::in | std::ios::binary);
-
-//    if(ifs.is_open())
-//    {
-//        liblas::ReaderFactory f;
-//        std::string s;
-//        liblas::Reader reader = f.CreateWithStream(ifs);
-//        liblas::Header const& header = reader.GetHeader();
-
-//        std::cout << "Compressed: " << header.Compressed() << std::endl;
-//        std::cout << "Signature: " << header.GetFileSignature() << std::endl;
-//        std::cout << "Points count: " << header.GetPointRecordsCount() << std::endl;
-
-//        auto bb = Utilities::bbExtraction(bounds[0]);
-//        lidarDTMPoints.clear();
-//        lidarDSMPoints.clear();
-//        while (reader.ReadNextPoint())
-//        {
-//            liblas::Point const& p = reader.GetPoint();
-//            auto p_ = std::make_shared<SemantisedTriangleMesh::Point>(p.GetX(), p.GetY(), p.GetZ());
-//            std::string s = p.GetClassification().GetClassName();
-//            auto p_2d = *p_;
-//            p_2d.setZ(0);
-
-//                if(s.compare("Ground") == 0)
-//                {
-//                    lidarDTMPoints.push_back(p_);
-//                }
-//                else if (/*s.compare("Building") == 0 && */p.GetReturnNumber() == 1 /*p.GetNumberOfReturns()*/)
-//                {
-//                    lidarDSMPoints.push_back(p_);
-//                }
-//        }
-
-//        ifs.close();
-
-//        return 0;
-//    }
-//    return -1;
-
-//}
-
-//Da controllare, non so perché è così complicato
 void CityGMLCore::fixWay(OpenStreetMap::Way *way)
 {
     way->fixRepeatedNodes();
@@ -272,7 +202,7 @@ void CityGMLCore::removeLinePointsInsideBuildings(std::vector<VertexList> &stree
     double meanDiagonal = 0;
     for(auto building : buildings)
     {
-        auto boundaries = building->getBoundaries();
+        auto boundaries = building->getOutlines();
         for(auto p : boundaries.at(0))
         {
             point_t point = { p->getX(),
@@ -281,7 +211,7 @@ void CityGMLCore::removeLinePointsInsideBuildings(std::vector<VertexList> &stree
             points_vector.push_back(point);
             pointBuildingLink.insert(std::make_pair(id++, i));
         }
-        auto bb = Utilities::bbExtraction(vertexToPointList(building->getBoundaries().at(0)));
+        auto bb = Utilities::bbExtraction(vertexToPointList(building->getOutlines().at(0)));
         double diagMeasure = (*bb[2] - *bb[0]).norm();
         meanDiagonal += diagMeasure;
         i++;
@@ -308,7 +238,7 @@ void CityGMLCore::removeLinePointsInsideBuildings(std::vector<VertexList> &stree
             }
             for(uint k = 0; k < neighboringPolygons.size(); k++)
             {
-                auto building_boundaries = buildings.at(neighboringPolygons.at(k))->getBoundaries();
+                auto building_boundaries = buildings.at(neighboringPolygons.at(k))->getOutlines();
                 if(Utilities::isPointInsidePolygon(v, vertexToPointList(building_boundaries.at(0))))
                 {
                     bool inside = false;
@@ -351,7 +281,7 @@ std::vector<std::pair<uint, uint> > CityGMLCore::removeSegmentsIntersectingBuild
     double meanDiagonal = 0;
     for(auto building : buildings)
     {
-        auto boundaries = building->getBoundaries();
+        auto boundaries = building->getOutlines();
         for(auto p : boundaries.at(0))
         {
             point_t point = { p->getX(),
@@ -392,7 +322,7 @@ std::vector<std::pair<uint, uint> > CityGMLCore::removeSegmentsIntersectingBuild
             for(uint k = 0; k < neighboringPolygons.size(); k++)
             {
                 auto building = buildings.at(neighboringPolygons.at(k));
-                auto polygons = building->getBoundaries();
+                auto polygons = building->getOutlines();
 
                 std::vector<std::pair<uint, uint> > modifiedBoundaries;
                 for(uint l = 0; l < polygons.size(); l++)
@@ -427,7 +357,7 @@ std::vector<std::pair<uint, uint> > CityGMLCore::removeSegmentsIntersectingBuild
                 }
                 for(auto p : modifiedBoundaries)
                 {
-                    buildings.at(neighboringPolygons.at(k))->setBoundaries(polygons); //Boh, ottimizzare?
+                    buildings.at(neighboringPolygons.at(k))->setOutlines(polygons); //Boh, ottimizzare?
                 }
             }
             if(intersections.size() > 1)
@@ -505,34 +435,46 @@ VertexList CityGMLCore::createLiDARDTMVertices()
 
 }
 
+/**
+ * @brief CityGMLCore::removeAlreadyExistingPoints method for removing LiDAR points that are already in the boundaries' list or in the arcs' list
+ * @param boundaries the buildings' boundaries
+ * @param arcs the streets' arcs
+ */
 void CityGMLCore::removeAlreadyExistingPoints(std::vector<std::vector<VertexList> > boundaries, std::vector<VertexList> arcs)
 {
+    // Create a vector to store 2D points from the lidarDTMPoints
     pointVec points_vector;
     double epsilon = SemantisedTriangleMesh::Point::EPSILON;
-    for(uint i = 0; i < lidarDTMPoints.size(); i++)
-    {
+
+    // Populate the points_vector with the lidarDTMPoints' x and y coordinates, setting the z coordinate to 0
+    for (uint i = 0; i < lidarDTMPoints.size(); i++) {
         auto p = lidarDTMPoints.at(i);
-        point_t point = { p->getX(),
-                          p->getY(),
-                          0};
+        point_t point = { p->getX(), p->getY(), 0 };
         points_vector.push_back(point);
     }
+
+    // Create a KDTree with the points_vector
     KDTree tree(points_vector);
 
+    // A value used to mark points as used
     int used = 9009;
 
+    // Parallel loop using OpenMP with 31 threads (num_threads(31))
     #pragma omp parallel for num_threads(31)
-    for(uint i = 0; i < boundaries.size(); i++)
-    {
-        for(uint j = 0; j < boundaries.at(i).size(); j++)
-        {
-            for(uint k = 0; k < boundaries.at(i).at(j).size(); k++)
-            {
+    for (uint i = 0; i < boundaries.size(); i++) {
+        for (uint j = 0; j < boundaries.at(i).size(); j++) {
+            for (uint k = 0; k < boundaries.at(i).at(j).size(); k++) {
                 auto p = boundaries.at(i).at(j).at(k);
-                point_t point = {p->getX(), p->getY(), 0.0};
+
+                // Create a 2D point from the boundary point coordinates
+                point_t point = { p->getX(), p->getY(), 0.0 };
+
+                // Find the neighbors of the boundary point within the specified epsilon distance in the KDTree
                 auto neighbors = tree.neighborhood_indices(point, epsilon);
-                for(uint i = 0; i < neighbors.size(); i++)
-                {
+
+                // Iterate over the neighbors found and mark their corresponding lidarDTMPoints as used
+                for (uint i = 0; i < neighbors.size(); i++) {
+                    // Use a critical section to safely access and modify the 'info' field of lidarDTMPoints
                     #pragma omp critical
                     {
                         lidarDTMPoints[neighbors[i]]->setInfo(static_cast<void*>(&used));
@@ -542,170 +484,107 @@ void CityGMLCore::removeAlreadyExistingPoints(std::vector<std::vector<VertexList
         }
     }
 
-    for(uint i = 0; i < lidarDTMPoints.size(); i++)
-    {
-        if(lidarDTMPoints[i]->getInfo() != nullptr && *static_cast<int*>(lidarDTMPoints[i]->getInfo()) == used)
+    // Now, remove points that are marked as used from the lidarDTMPoints vector
+    for (uint i = 0; i < lidarDTMPoints.size(); i++) {
+        if (lidarDTMPoints[i]->getInfo() != nullptr && *static_cast<int*>(lidarDTMPoints[i]->getInfo()) == used) {
             lidarDTMPoints.erase(lidarDTMPoints.begin() + i);
+        }
     }
 
 }
 
-VertexList CityGMLCore::createDTMVertices(double scale_factor, SemantisedTriangleMesh::Point origin)
-{
-
-    VertexList dtmVertices;
+// This function removes OSM way nodes that lie inside buildings from the OSM data.
+void CityGMLCore::removeOSMWayNodesFromBuildings(std::vector<std::string> &ways) {
+    // Create a vector to store 2D points from the buildings' outlines
     pointVec points_vector;
-    std::map<uint, uint > pointBuildingLink;
+
+    // Create a map to link point indices with building indices
+    std::map<uint, uint> pointBuildingLink;
+
+    // Initialize variables for point and building IDs, and mean diagonal measurement
     uint id = 0, i = 0;
     double meanDiagonal = 0;
-    double* geoTransform = dtm->GetGeoTransform();
-    geoTransform[0] = (geoTransform[0] - origin.getX()) / scale_factor;  //x del punto in alto a sinistra
-    geoTransform[3] = (geoTransform[3] - origin.getY()) / scale_factor;  //y del punto in alto a sinistra
-    geoTransform[1] /= scale_factor;
-    geoTransform[5] /= scale_factor;
 
-    for(auto building : buildings)
-    {
-        auto boundaries = building->getBoundaries();
-        for(auto p : boundaries.at(0))
-        {
-            point_t point = { p->getX(),
-                              p->getY(),
-                              p->getZ()};
+    // Loop through each building in the 'buildings' vector
+    for (auto building : buildings) {
+        // Get the outlines of the building
+        auto boundaries = building->getOutlines();
+
+        // Process each point in the building's outer boundary
+        for (auto p : boundaries.at(0)) {
+            // Create a 2D point from the point's x and y coordinates and set the z coordinate to 0
+            point_t point = { p->getX(), p->getY(), 0 };
             points_vector.push_back(point);
+
+            // Link the point ID to the building ID in the pointBuildingLink map
             pointBuildingLink.insert(std::make_pair(id++, i));
         }
-        auto bb = Utilities::bbExtraction(vertexToPointList(building->getBoundaries().at(0)));
+
+        // Calculate the diagonal measure of the building's bounding box
+        auto bb = Utilities::bbExtraction(vertexToPointList(building->getOutlines().at(0)));
         double diagMeasure = (*bb[2] - *bb[0]).norm();
         meanDiagonal += diagMeasure;
         i++;
     }
 
+    // Calculate the mean diagonal measure
     meanDiagonal /= static_cast<double>(buildings.size());
 
-    KDTree tree(points_vector);
-
-    for(uint i = 0; i < dtm->GetDimensions()[0]; i++)
-    {
-        for(uint j = 0; j < dtm->GetDimensions()[1]; j++)
-        {
-            std::shared_ptr<Vertex> v = std::make_shared<Vertex>();
-            v->setX((geoTransform[0] + i * geoTransform[1]));
-            v->setY((geoTransform[3] + j * geoTransform[5]));
-            v->setZ(0);
-            bool inside = false;
-            std::vector<std::pair<size_t, double> > neighbors_distances;
-            std::vector<uint> neighboringPolygons;
-            point_t query_point = {v->getX(), v->getY(), v->getZ()};
-            neighbors_distances.clear();
-            auto neighbors = tree.neighborhood_indices(query_point, meanDiagonal / 2);
-
-            for(auto it = neighbors.begin(); it != neighbors.end(); it++){
-                auto pit = std::find(neighboringPolygons.begin(), neighboringPolygons.end(), pointBuildingLink.at(*it));
-                if(pit == neighboringPolygons.end())
-                    neighboringPolygons.push_back(pointBuildingLink.at(*it));
-            }
-
-            for(auto npit = neighboringPolygons.begin(); npit != neighboringPolygons.end(); npit++)
-            {
-                auto building_boundaries = buildings.at(*npit)->getBoundaries();
-                bool insideOuter = Utilities::isPointInsidePolygon(v, vertexToPointList(building_boundaries.at(0)));
-                bool outsideInners = true;
-
-                for(auto pit = building_boundaries.begin(); pit != building_boundaries.end(); pit++)
-                    outsideInners = outsideInners && !Utilities::isPointInsidePolygon(v, vertexToPointList(*pit));
-
-                if(insideOuter && outsideInners)
-                {
-                    inside = true;
-                    break;
-                }
-            }
-            if(!inside)
-            {
-                dtmVertices.push_back(v);
-            }
-        }
-    }
-
-    return dtmVertices;
-}
-
-void CityGMLCore::removeOSMWayNodesFromBuildings(std::vector<std::string> &ways)
-{
-    pointVec points_vector;
-    std::map<uint, uint > pointBuildingLink;
-    uint id = 0, i = 0;
-    double meanDiagonal = 0;
-    for(auto building : buildings)
-    {
-        auto boundaries = building->getBoundaries();
-        for(auto p : boundaries.at(0))
-        {
-            point_t point = { p->getX(),
-                              p->getY(),
-                              0};
-            points_vector.push_back(point);
-            pointBuildingLink.insert(std::make_pair(id++, i));
-        }
-        auto bb = Utilities::bbExtraction(vertexToPointList(building->getBoundaries().at(0)));
-        double diagMeasure = (*bb[2] - *bb[0]).norm();
-        meanDiagonal += diagMeasure;
-        i++;
-    }
-
-    meanDiagonal /= static_cast<double>(buildings.size());
-
+    // Create a KDTree with the points_vector for efficient neighborhood searches
     KDTree tree(points_vector);
     uint counter = 0;
 
-
+    // Parallel loop using OpenMP with 31 threads (num_threads(31))
     #pragma omp parallel for num_threads(31)
-    for(auto lit = ways.begin(); lit != ways.end(); lit++)
-    {
+    for (auto lit = ways.begin(); lit != ways.end(); lit++) {
+        // Get the OSM way for the current ID
         auto way = osm.getWay(*lit);
         auto nodes = way->getNodes();
-        for(auto nit = nodes.begin(); nit != nodes.end(); nit++){
+
+        // Process each node of the way
+        for (auto nit = nodes.begin(); nit != nodes.end(); nit++) {
             PointList intersections;
             auto v = (*nit)->getCoordinates();
 
-            std::vector<std::pair<size_t, double> > neighbors_distances;
+            // Find the neighbors (buildings) of the current node within a specified radius (meanDiagonal / 2)
+            std::vector<std::pair<size_t, double>> neighbors_distances;
             std::vector<uint> neighboringPolygons;
-            point_t query_point = {v->x, v->y, 0.0};
+            point_t query_point = { v->x, v->y, 0.0 };
             neighbors_distances.clear();
             auto neighbors = tree.neighborhood_indices(query_point, meanDiagonal / 2);
 
-            for(auto it = neighbors.begin(); it != neighbors.end(); it++){
+            // Find neighboring polygons (buildings) based on their points' indices
+            for (auto it = neighbors.begin(); it != neighbors.end(); it++) {
                 auto pit = std::find(neighboringPolygons.begin(), neighboringPolygons.end(), pointBuildingLink.at(*it));
-                if(pit == neighboringPolygons.end())
+                if (pit == neighboringPolygons.end())
                     neighboringPolygons.push_back(pointBuildingLink.at(*it));
             }
 
-            for(auto npit = neighboringPolygons.begin(); npit != neighboringPolygons.end(); npit++)
-            {
-                auto building_boundaries = buildings.at(*npit)->getBoundaries();
+            // Check if the node lies inside any neighboring building's outer boundary and outside all inner boundaries
+            for (auto npit = neighboringPolygons.begin(); npit != neighboringPolygons.end(); npit++) {
+                auto building_boundaries = buildings.at(*npit)->getOutlines();
                 auto point = std::make_shared<SemantisedTriangleMesh::Point>(v->x, v->y, 0);
                 bool insideOuter = Utilities::isPointInsidePolygon(point, vertexToPointList(building_boundaries.at(0)));
                 bool outsideInners = true;
 
-                for(auto pit = building_boundaries.begin(); pit != building_boundaries.end(); pit++)
+                // Check if the point lies inside the outer boundary and outside all inner boundaries of the building
+                for (auto pit = building_boundaries.begin(); pit != building_boundaries.end(); pit++)
                     outsideInners = outsideInners && !Utilities::isPointInsidePolygon(point, vertexToPointList(*pit));
 
-                if(insideOuter && outsideInners)
-                {
+                // If the point is inside the outer boundary and outside all inner boundaries, check if it is on the boundary
+                if (insideOuter && outsideInners) {
                     bool onBoundary = false;
-                    for(auto pit = building_boundaries.begin(); pit != building_boundaries.end(); pit++)
-                    {
-                        for(uint m = 1; m < pit->size(); m++)
-                        {
+                    for (auto pit = building_boundaries.begin(); pit != building_boundaries.end(); pit++) {
+                        for (uint m = 1; m < pit->size(); m++) {
                             auto p1 = pit->at(m - 1);
                             auto p2 = pit->at(m);
                             double p1z = p1->getZ();
                             p1->setZ(0);
                             double p2z = p2->getZ();
                             p2->setZ(0);
-                            if(Utilities::isPointInSegment(p1.get(), p2.get(), point.get()))
-                            {
+
+                            // Check if the point lies on any boundary segment of the building
+                            if (Utilities::isPointInSegment(p1.get(), p2.get(), point.get())) {
                                 p1->setZ(p1z);
                                 p2->setZ(p2z);
                                 onBoundary = true;
@@ -716,8 +595,8 @@ void CityGMLCore::removeOSMWayNodesFromBuildings(std::vector<std::string> &ways)
                         }
                     }
 
-                    if(!onBoundary)
-                    {
+                    // If the point is not on the boundary, remove the node from the OSM data
+                    if (!onBoundary) {
                         osm.removeNode((*nit)->getId());
                         break;
                     }
@@ -725,6 +604,7 @@ void CityGMLCore::removeOSMWayNodesFromBuildings(std::vector<std::string> &ways)
             }
         }
 
+        // Critical section to safely update the progress counter and display it
         #pragma omp critical
         {
             counter++;
@@ -734,320 +614,178 @@ void CityGMLCore::removeOSMWayNodesFromBuildings(std::vector<std::string> &ways)
     std::cout << std::endl;
 }
 
-std::vector<std::vector<std::pair<unsigned int, unsigned int> > > CityGMLCore::extractBuildingsHeights(bool is_dtm_tiff = true, double scale_factor = 1.0, SemantisedTriangleMesh::Point origin = SemantisedTriangleMesh::Point(0,0,0))
+// Function to extract building heights from LiDAR data based on building outlines.
+std::vector<std::vector<double>> CityGMLCore::extractBuildingsHeightsFromLidar(double scale_factor, SemantisedTriangleMesh::Point origin)
 {
-    std::vector<std::vector<std::pair<unsigned int, unsigned int> > > heights;
-    unsigned int counter = 0;
-    std::map<unsigned int, std::pair<unsigned int, unsigned int> > index_to_rowcol;
-    for(auto building : buildings)
+    std::vector<std::vector<double>> heights; // Vector to store heights of each building
+    unsigned int counter = 0; // Counter for tracking progress
+
+    // Initialize an empty vector for each building
+    for (auto building : buildings)
     {
-        std::vector<std::pair<unsigned int, unsigned int> > building_heights;
+        std::vector<double> building_heights;
         heights.push_back(building_heights);
     }
 
-    auto dhm_tiff = is_dtm_tiff ? dtm : dsm;
-    float** dhm_heights = dhm_tiff->GetRasterBand(1);
-    double* geoTransform = dhm_tiff->GetGeoTransform();
-    geoTransform[0] = (geoTransform[0] - origin.getX()) / scale_factor;  //x del punto in alto a sinistra
-    geoTransform[3] = (geoTransform[3] - origin.getY()) / scale_factor;  //y del punto in alto a sinistra
-    geoTransform[1] /= scale_factor;
-    geoTransform[5] /= scale_factor;
-    std::cout << dhm_tiff->GetDimensions()[0] << " " << dhm_tiff->GetDimensions()[1] << std::endl;
-    std::cout << geoTransform[0] << " " << geoTransform[1] << " " << geoTransform[2] << std::endl;
-    std::cout << geoTransform[3] << " " << geoTransform[4] << " " << geoTransform[5] << std::endl;
-    double pixel_diagonal_length = sqrt(pow(geoTransform[1], 2) + pow(geoTransform[5], 2));
+    // Convert LiDAR points to a 2D point vector
     pointVec points_vector;
-
-
-//    counter = 0;
-    for(unsigned int i = 0; i < dhm_tiff->GetDimensions()[0]; i++)
+    for (auto p : lidarDSMPoints)
     {
-        for(unsigned int j = 0; j < dhm_tiff->GetDimensions()[1]; j++)
-        {
-            std::vector<double> point = { geoTransform[0] + j * geoTransform[1] + i * geoTransform[2],
-                                          geoTransform[3] + j * geoTransform[4] + i * geoTransform[5], //NEGATIVO???
-                                          0};
-            points_vector.push_back(point);
-            index_to_rowcol.insert(std::make_pair(counter++, std::make_pair(i,j)));
-        }
-    }
-    KDTree tree(points_vector);
-
-    counter = 0;
-
-    #pragma omp parallel for num_threads(31)
-    for(uint i = 0; i < buildings.size(); i++)
-    {
-        auto boundaries = buildings.at(i)->getBoundaries();
-        std::vector<VertexList> boundaries2D;
-        for(auto boundary : boundaries)
-        {
-            VertexList boundary2D;
-            for(auto v : boundary)
-            {
-                boundary2D.push_back(std::make_shared<Vertex>(v->getX(), v->getY(), 0.0));
-            }
-            boundaries2D.push_back(boundary2D);
-        }
-        std::vector<std::shared_ptr<SemantisedTriangleMesh::Point> > bb = Utilities::bbExtraction(boundaries2D[0]);
-        double sphere_radius = std::max(pixel_diagonal_length, ((*bb[0]) - (*bb[2])).norm());
-        SemantisedTriangleMesh::Point middle(0,0,0);
-        std::for_each(boundaries2D[0].begin(), boundaries2D[0].end(), [&middle](std::shared_ptr<Vertex> v){
-            middle += *v;
-        });
-        middle /= boundaries2D[0].size();
-
-        std::vector<size_t> neighbors_indices;
-        std::vector<std::pair<unsigned int, unsigned int> > neighbors;
-        point_t query_point = {middle.getX(), middle.getY(), 0.0};
-        neighbors_indices = tree.neighborhood_indices(query_point, sphere_radius);
-
-        for(std::vector<size_t>::iterator it = neighbors_indices.begin(); it != neighbors_indices.end(); it++){
-            neighbors.push_back(index_to_rowcol.at(*it));
-        }
-        uint m = 0;
-
-        for(unsigned int j = 0; j < neighbors.size(); j++)
-        {
-            double min_x = geoTransform[0] + neighbors.at(j).second * geoTransform[1] + neighbors.at(j).first * geoTransform[2];
-            double min_y = geoTransform[3] + neighbors.at(j).second * geoTransform[4] + neighbors.at(j).first * geoTransform[5];
-            std::vector<std::shared_ptr<SemantisedTriangleMesh::Point> > frame;
-            frame.push_back(std::make_shared<SemantisedTriangleMesh::Point>(min_x, min_y, 0));
-            frame.push_back(std::make_shared<SemantisedTriangleMesh::Point>(min_x + geoTransform[1], min_y, 0));
-            frame.push_back(std::make_shared<SemantisedTriangleMesh::Point>(frame.back()->getX(), min_y + geoTransform[5], 0));
-            frame.push_back(std::make_shared<SemantisedTriangleMesh::Point>(min_x, frame.back()->getY(), 0.0));
-            frame.push_back(frame[0]);
-
-            bool frameInBuilding = false, buildingInFrame = false;
-            //Check frame interno (o intersecante) all'edificio
-            for(uint k = 0; k < 4; k++)
-                if(Utilities::isPointInsidePolygon(frame[k], boundaries2D[0]))
-                {
-                    frameInBuilding = true;
-                    for(uint l = 1; l < boundaries2D.size(); l++)
-                        if(Utilities::isPointInsidePolygon(frame[0], boundaries2D[l]))
-                        {
-                            frameInBuilding = false;
-                            break;
-                        }
-                    if(frameInBuilding)
-                        break;
-                }
-
-            if(!frameInBuilding)
-            {
-                //Check bounding box interna al frame
-                for(uint k = 0; k < 4; k++)
-                {
-                    if(Utilities::isPointInsidePolygon(bb[k], frame))
-                        for(uint l = 0; l < boundaries2D[0].size(); l++)
-                        {
-                            buildingInFrame = Utilities::isPointInsidePolygon(boundaries2D[0][l], frame);
-                            if(buildingInFrame)
-                                break;
-                        }
-
-                    if(buildingInFrame)
-                        break;
-                }
-            }
-
-            std::vector<std::shared_ptr<SemantisedTriangleMesh::Point> > boundaryPoints(boundaries2D[0].begin(), boundaries2D[0].end());
-            if(frameInBuilding || buildingInFrame || Utilities::polygonsIntersect(frame, boundaryPoints))
-                heights[i].push_back(std::make_pair(neighbors.at(j).first, neighbors.at(j).second));
-
-            for(unsigned int l = 0; l < 4; l++)
-                frame.at(l).reset();
-        }
-
-        if(heights[i].size() == 0)
-        {
-            #pragma omp critical
-            {
-                std::cerr << "Impossible case: boundary does not include any pixel while no pixel wholly include the boundary and boundary intersects no pixel" << std::endl;
-                std::cerr << i << std::endl;
-                std::cerr << geoTransform[0] << " " << geoTransform[1] << " " << geoTransform[2] << " " << std::endl;
-                std::cerr << geoTransform[3] << " " << geoTransform[4] << " " << geoTransform[5] << " " << std::endl << std::flush;
-                std::cerr << dhm_tiff->GetDimensions()[0] << " " << dhm_tiff->GetDimensions()[1] << std::endl;
-
-                for(unsigned int j = 0; j < neighbors.size(); j++)
-                {
-                    double min_x = geoTransform[0] + neighbors.at(j).second * geoTransform[1] + neighbors.at(j).first * geoTransform[2];
-                    double min_y = geoTransform[3] + neighbors.at(j).second * geoTransform[4] + neighbors.at(j).first * geoTransform[5];
-                    std::vector<std::shared_ptr<SemantisedTriangleMesh::Point> > frame;
-                    frame.push_back(std::make_shared<SemantisedTriangleMesh::Point>(min_x, min_y, 0));
-                    frame.push_back(std::make_shared<SemantisedTriangleMesh::Point>(min_x + geoTransform[1], min_y, 0));
-                    frame.push_back(std::make_shared<SemantisedTriangleMesh::Point>(frame.back()->getX(), min_y + geoTransform[5], 0));
-                    frame.push_back(std::make_shared<SemantisedTriangleMesh::Point>(min_x, frame.back()->getY(), 0.0));
-                    frame.push_back(frame[0]);
-                }
-                exit(6);
-            }
-        }
-
-        #pragma omp critical
-        {
-            counter++;
-            std::cout << counter * 100 / buildings.size() << "%\r" << std::flush;
-        }
-    }
-    std::cout << std::endl;
-    for(unsigned int i = 0; i < dhm_tiff->GetDimensions()[0]; i++)
-        if(dhm_heights[i] != nullptr)
-            delete[] dhm_heights[i];
-
-    geoTransform[0] = (geoTransform[0] * scale_factor + origin.getX());  //x del punto in alto a sinistra
-    geoTransform[3] = (geoTransform[3] * scale_factor + origin.getY());  //y del punto in alto a sinistra
-    geoTransform[1] *= scale_factor;
-    geoTransform[5] *= scale_factor;
-    return heights;
-}
-
-std::vector<std::vector<double> > CityGMLCore::extractBuildingsHeightsFromLidar(double scale_factor = 1.0, SemantisedTriangleMesh::Point origin = SemantisedTriangleMesh::Point(0,0,0))
-{
-    std::vector<std::vector<double> > heights;
-    unsigned int counter = 0;
-    for(auto building : buildings)
-    {
-        std::vector<double > building_heights;
-        heights.push_back(building_heights);
-    }
-    pointVec points_vector;
-    for(auto p : lidarDSMPoints)
-    {
-        std::vector<double> point = { p->getX(), p->getY(), 0.0};
+        std::vector<double> point = {p->getX(), p->getY(), 0.0};
         points_vector.push_back(point);
     }
+
+    // Build a KDTree from the LiDAR points for efficient nearest neighbor searches
     KDTree tree(points_vector);
 
     counter = 0;
 
     std::cout << "0%" << std::endl;
+
+    // Loop through each building
     #pragma omp parallel for num_threads(31)
-    for(uint i = 0; i < buildings.size(); i++)
+    for (uint i = 0; i < buildings.size(); i++)
     {
-        auto boundaries = buildings.at(i)->getBoundaries();
+        auto boundaries = buildings.at(i)->getOutlines();
         std::vector<VertexList> boundaries2D;
-        for(auto boundary : boundaries)
+
+        // Convert building boundaries to 2D points
+        for (auto boundary : boundaries)
         {
             VertexList boundary2D;
-            for(auto v : boundary)
+            for (auto v : boundary)
             {
                 boundary2D.push_back(std::make_shared<Vertex>(v->getX(), v->getY(), 0.0));
             }
             boundaries2D.push_back(boundary2D);
         }
-        std::vector<std::shared_ptr<SemantisedTriangleMesh::Point> > bb = Utilities::bbExtraction(boundaries2D[0]);
+
+        // Calculate the middle point and sphere radius for nearest neighbor search
+        std::vector<std::shared_ptr<SemantisedTriangleMesh::Point>> bb = Utilities::bbExtraction(boundaries2D[0]);
         double sphere_radius = ((*bb[0]) - (*bb[2])).norm() / 2;
-        SemantisedTriangleMesh::Point middle(0,0,0);
+        SemantisedTriangleMesh::Point middle(0, 0, 0);
         std::for_each(boundaries2D[0].begin(), boundaries2D[0].end(), [&middle](std::shared_ptr<Vertex> v){
             middle += *v;
         });
         middle /= boundaries2D[0].size();
 
         std::vector<size_t> neighbors_indices;
-        std::vector<std::pair<unsigned int, unsigned int> > neighbors;
+        std::vector<std::pair<unsigned int, unsigned int>> neighbors;
         point_t query_point = {middle.getX(), middle.getY(), 0.0};
+
+        // Find neighbors within the sphere around the middle point using KDTree
         neighbors_indices = tree.neighborhood_indices(query_point, sphere_radius);
 
-        uint counter = 0;
-        for(unsigned int j = 0; j < neighbors_indices.size(); j++)
+        uint counter = 0; // Counter for tracking progress within each building
+
+        // Loop through neighbors and check if they are inside the building boundaries
+        for (unsigned int j = 0; j < neighbors_indices.size(); j++)
         {
             auto v = lidarDSMPoints.at(neighbors_indices.at(j));
             auto p = std::make_shared<SemantisedTriangleMesh::Point>(v->getX(), v->getY(), 0);
 
-
             bool insideOuter = false, outsideInner = true;
-//            for(uint l = 0; l < boundaries2D.size(); l++)
-//            {
-//                std::cout << "B"<< counter << "=[" << std::endl;
-//                for(uint k = 0; k < boundaries2D.at(l).size(); k++)
-//                {
-//                    std::static_pointer_cast<SemantisedTriangleMesh::Point>(boundaries2D[0].at(k))->print(std::cout, BracketsType::NONE, " ");
-//                }
-//                std::cout << "];" << std::endl;
-//                std::cout << "plot(B" << counter << "(:,1), B" << counter << "(:,2));" << std::endl;
-//                std::cout << "labels=num2cell(0:length(B" << counter << ")-1);" << std::endl;
-//                std::cout << "text(B" << counter << "(:,1), B" << counter++ << "(:,2), labels);" << std::endl << std::endl;
-//            }
 
-            if(Utilities::isPointInsidePolygon(p, boundaries2D[0]))
+            // Check if the LiDAR point is inside the outer boundary of the building
+            if (Utilities::isPointInsidePolygon(p, boundaries2D[0]))
             {
                 insideOuter = true;
-                for(uint l = 1; l < boundaries2D.size(); l++)
-                    if(Utilities::isPointInsidePolygon(p, boundaries2D[l]))
+
+                // Check if the LiDAR point is outside any inner boundaries (holes) of the building
+                for (uint l = 1; l < boundaries2D.size(); l++)
+                {
+                    if (Utilities::isPointInsidePolygon(p, boundaries2D[l]))
                     {
                         outsideInner = false;
                         break;
                     }
+                }
             }
-            if(insideOuter && outsideInner)
+
+            // If the LiDAR point is inside both outer and inner boundaries, add its height to the building's heights vector
+            if (insideOuter && outsideInner)
                 heights[i].push_back(lidarDSMPoints.at(neighbors_indices[j])->getZ());
         }
 
-        if(heights[i].size() == 0)
-            heights[i].push_back(buildings[i]->getBoundaries()[0][0]->getZ());
+        // If no height was found for the building, add the default height from its outline
+        if (heights[i].size() == 0)
+            heights[i].push_back(buildings[i]->getOutlines()[0][0]->getZ());
 
-
+        // Update the progress counter and print progress
         #pragma omp critical
         {
             counter++;
             std::cout << counter * 100 / buildings.size() << "%\r" << std::flush;
         }
     }
-    return heights;
 
+    return heights; // Return the vector of building heights
 }
 
-void CityGMLCore::associateElevations(std::vector<std::vector<VertexList> > triangulationHoles, std::vector<VertexList> streetsArcsPoints)
+// Function to associate elevations from LiDAR data to sets of points.
+void CityGMLCore::associateElevations(std::vector<std::vector<VertexList>> triangulationHoles, std::vector<VertexList> streetsArcsPoints)
 {
-    unsigned int counter = 0;
+    unsigned int counter = 0; // Counter for tracking progress
+
+    // Convert LiDAR DTM points to a 2D point vector
     pointVec points_vector;
-    for(unsigned int i = 0; i < lidarDTMPoints.size(); i++)
+    for (unsigned int i = 0; i < lidarDTMPoints.size(); i++)
     {
-        std::vector<double> point = { lidarDTMPoints[i]->getX(), lidarDTMPoints[i]->getY(), 0.0};
+        std::vector<double> point = {lidarDTMPoints[i]->getX(), lidarDTMPoints[i]->getY(), 0.0};
         points_vector.push_back(point);
     }
 
+    // Build a KDTree from the LiDAR DTM points for efficient nearest neighbor searches
     KDTree tree(points_vector);
 
+    // Loop through each set of points in triangulationHoles and associate elevations
     #pragma omp parallel for num_threads(31)
-    for(uint i = 0; i < triangulationHoles.size(); i++)
+    for (uint i = 0; i < triangulationHoles.size(); i++)
     {
         auto boundaries = triangulationHoles[i];
-        for(uint j = 0; j < boundaries.size() - 1; j++)
-            for(uint k = 0; k < boundaries[j].size(); k++)
+        for (uint j = 0; j < boundaries.size() - 1; j++)
+        {
+            for (uint k = 0; k < boundaries[j].size(); k++)
             {
                 std::shared_ptr<SemantisedTriangleMesh::Point> p = boundaries[j][k];
                 point_t point = {p->getX(), p->getY(), 0.0};
+
+                // Find the nearest LiDAR DTM point using the KDTree
                 size_t ret_index = tree.nearest_index(point);
+                // Set the elevation of the current point to the elevation of the nearest LiDAR DTM point
                 p->setZ(lidarDTMPoints[ret_index]->getZ());
             }
+        }
 
+        // Update the progress counter and print progress
         #pragma omp critical
         {
             std::cout << counter++ * 100 / triangulationHoles.size() << "%\r" << std::flush;
         }
     }
 
+    // Loop through each set of points in streetsArcsPoints and associate elevations
     #pragma omp parallel for num_threads(31)
-    for(uint i = 0; i < streetsArcsPoints.size(); i++)
+    for (uint i = 0; i < streetsArcsPoints.size(); i++)
     {
         auto polylines = streetsArcsPoints[i];
-        for(uint j = 0; j < polylines.size(); j++)
+        for (uint j = 0; j < polylines.size(); j++)
         {
             std::shared_ptr<SemantisedTriangleMesh::Point> p = polylines[j];
             point_t point = {p->getX(), p->getY(), 0.0};
+
+            // Find the nearest LiDAR DTM point using the KDTree
             size_t ret_index = tree.nearest_index(point);
+            // Set the elevation of the current point to the elevation of the nearest LiDAR DTM point
             p->setZ(lidarDTMPoints[ret_index]->getZ());
         }
 
+        // Update the progress counter and print progress
         #pragma omp critical
         {
             std::cout << counter++ * 100 / streetsArcsPoints.size() << "%\r" << std::flush;
         }
     }
-
 }
 
 std::string CityGMLCore::getOsmFilename() const
@@ -1060,25 +798,6 @@ void CityGMLCore::setOsmFilename(const std::string &value)
     osmFilename = value;
 }
 
-std::string CityGMLCore::getDtmFilename() const
-{
-    return dtmFilename;
-}
-
-void CityGMLCore::setDtmFilename(const std::string &value)
-{
-    dtmFilename = value;
-}
-
-std::string CityGMLCore::getDsmFilename() const
-{
-    return dsmFilename;
-}
-
-void CityGMLCore::setDsmFilename(const std::string &value)
-{
-    dsmFilename = value;
-}
 
 void CityGMLCore::setLevel(uint level, std::string meshFileName, std::string annotationFileName)
 {
@@ -1090,12 +809,6 @@ void CityGMLCore::setLevel(uint level, std::string meshFileName, std::string ann
         default:
             ;
     }
-}
-
-bool isPointOutsideBounds(const SemantisedTriangleMesh::Point p, const SemantisedTriangleMesh::Point min, const SemantisedTriangleMesh::Point max)
-{
-    return p.getX() < min.getX() || p.getY() < min.getY() ||
-           p.getX() > max.getX() || p.getY() > max.getY();
 }
 
 bool CityGMLCore::isPointOutsideBounds(const std::shared_ptr<SemantisedTriangleMesh::Point> p)
@@ -1124,19 +837,20 @@ int CityGMLCore::buildLevel(uint level)
     return -1;
 }
 
+// Function to read LiDAR data from a file and extract classified points within specified bounds.
 int CityGMLCore::readLiDAR(std::string filename,
                            std::vector<std::string> allowedClasses,
                            bool checkInsideBounds,
-                           std::vector<std::vector<std::shared_ptr<SemantisedTriangleMesh::Point> > > bounds,
-                           std::vector<std::pair<std::shared_ptr<SemantisedTriangleMesh::Point>, std::string> > &classifiedPoints)
+                           std::vector<std::vector<std::shared_ptr<SemantisedTriangleMesh::Point>>> bounds,
+                           std::vector<std::pair<std::shared_ptr<SemantisedTriangleMesh::Point>, std::string>>& classifiedPoints)
 {
+    // Open the LiDAR file for reading
     std::ifstream ifs;
     ifs.open(filename, std::ios::in | std::ios::binary);
 
-    if(ifs.is_open())
+    if (ifs.is_open())
     {
         liblas::ReaderFactory f;
-        std::string s;
         liblas::Reader reader = f.CreateWithStream(ifs);
         liblas::Header const& header = reader.GetHeader();
 
@@ -1144,7 +858,9 @@ int CityGMLCore::readLiDAR(std::string filename,
         std::cout << "Signature: " << header.GetFileSignature() << std::endl;
         std::cout << "Points count: " << header.GetPointRecordsCount() << std::endl;
 
-        auto bb = Utilities::bbExtraction(bounds[0]);
+        auto bb = Utilities::bbExtraction(bounds[0]); // Extract bounding box for external boundary (first one)
+
+        // Loop through each point in the LiDAR data
         while (reader.ReadNextPoint())
         {
             liblas::Point const& p = reader.GetPoint();
@@ -1152,48 +868,574 @@ int CityGMLCore::readLiDAR(std::string filename,
             std::string s = p.GetClassification().GetClassName();
             auto p_2d = std::make_shared<SemantisedTriangleMesh::Point>(*p_);
 
-            p_2d->setZ(0);
-            if(!checkInsideBounds || Utilities::isPointInsidePolygon(p_2d, bb))
+            p_2d->setZ(0); // Convert the 3D point to a 2D point (ignoring the Z coordinate)
+
+            // Check if the point is within the bounds (if enabled)
+            if (!checkInsideBounds || Utilities::isPointInsidePolygon(p_2d, bb))
             {
                 bool insideBounds = false;
-                if(checkInsideBounds && Utilities::isPointInsidePolygon(p_2d, bounds[0]))
+
+                // If bounds checking is enabled, check if the point is inside the outer boundary
+                if (checkInsideBounds && Utilities::isPointInsidePolygon(p_2d, bounds[0]))
                 {
                     insideBounds = true;
-                    for(uint i = 1; i < bounds.size(); i++)
-                        if(Utilities::isPointInsidePolygon(p_2d, bounds[i]))
+
+                    // Check if the point is inside any inner boundaries (holes)
+                    for (uint i = 1; i < bounds.size(); i++)
+                    {
+                        if (Utilities::isPointInsidePolygon(p_2d, bounds[i]))
                         {
                             insideBounds = false;
                             break;
                         }
+                    }
 
-                    if(!insideBounds)
-                        break;
+                    if (!insideBounds)
+                        break; // Break the loop if the point is not inside any inner boundaries
                 }
 
-                if(!checkInsideBounds || insideBounds)
+                // If bounds checking is disabled or the point is inside the bounds
+                if (!checkInsideBounds || insideBounds)
                 {
                     std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) { return std::tolower(c); });
+
+                    // Check if the point's classification is in the list of allowed classes
                     auto sit = std::find_if(allowedClasses.begin(), allowedClasses.end(), [s](std::string classString) {
                         return classString.compare(s) == 0;
                     });
-                    if(sit != allowedClasses.end())
-                        classifiedPoints.push_back(std::make_pair(p_, s));
-                }
 
+                    if (sit != allowedClasses.end())
+                        classifiedPoints.push_back(std::make_pair(p_, s)); // Store the classified point
+                }
             }
         }
 
         ifs.close();
 
-        return 0;
+        return 0; // Return success
     }
-    return -1;
+
+    return -1; // Return error if the file could not be opened
 }
 
+/*****************************************************************************/
+
+// Function to calculate the minimum and maximum X and Y coordinates from lidarDTMPoints and bounds
+void CityGMLCore::calculateMinMax(SemantisedTriangleMesh::Point &min, SemantisedTriangleMesh::Point &max)
+{
+    // Initialize the min and max points with extreme values
+    min = SemantisedTriangleMesh::Point(std::numeric_limits<double>::max(),
+                                        std::numeric_limits<double>::max(),
+                                        0);
+    max = SemantisedTriangleMesh::Point(-std::numeric_limits<double>::max(),
+                                        -std::numeric_limits<double>::max(),
+                                        0);
+
+    // Loop through lidarDTMPoints and update min and max points
+    for (const auto& point : lidarDTMPoints) {
+        if (point->getX() < min.getX())
+            min.setX(point->getX());
+        if (point->getY() < min.getY())
+            min.setY(point->getY());
+        if (point->getX() > max.getX())
+            max.setX(point->getX());
+        if (point->getY() > max.getY())
+            max.setY(point->getY());
+    }
+
+    // Loop through bounds and update min and max points
+    for (const auto& pointList : bounds) {
+        for (const auto& point : pointList) {
+            if (point->getX() < min.getX())
+                min.setX(point->getX());
+            if (point->getY() < min.getY())
+                min.setY(point->getY());
+            if (point->getX() > max.getX())
+                max.setX(point->getX());
+            if (point->getY() > max.getY())
+                max.setY(point->getY());
+        }
+    }
+}
+
+// Function to normalize lidarDTMPoints, lidarDSMPoints, and bounds using the origin and city size
+void CityGMLCore::normalizePoints(std::vector<std::shared_ptr<SemantisedTriangleMesh::Point>>& points,
+                     const std::shared_ptr<SemantisedTriangleMesh::Point>& origin,
+                     double city_size) {
+    // Loop through the points and normalize them by subtracting the origin and dividing by city_size
+    for (auto& point : points) {
+        auto opoint = std::make_shared<SemantisedTriangleMesh::Point>(*point);
+        (*point) -= (*origin);
+        (*point) /= city_size;
+    }
+}
+
+// Function to filter OpenStreetMap nodes outside the bounds
+void CityGMLCore::filterNodesOutsideBounds() {
+    for (auto nit = osm.getNodes().begin(); nit != osm.getNodes().end();) {
+        auto p = nit->second->getCoordinates();
+        auto point = std::make_shared<SemantisedTriangleMesh::Point>(p->x, p->y, 0);
+        // Check if the point is outside the bounds and remove it if true
+        if (isPointOutsideBounds(point))
+            nit = osm.removeNode(nit->second->getId());
+        else
+            nit++;
+    }
+}
+
+// Function to process OpenStreetMap ways and identify buildings and streets
+void CityGMLCore::processOpenStreetMapWays() {
+    for (auto ait = osm.getWays().begin(); ait != osm.getWays().end(); ait++) {
+        if (ait->second->checkTag(std::make_pair("building", "")))
+            buildingsArcs.push_back(ait->first);
+
+        if (ait->second->checkTag(std::make_pair("highway", "")) &&
+            (!ait->second->checkTag(std::make_pair("area", "")) ||
+             ait->second->checkTag(std::make_pair("area", "no")))) {
+            fixWay(ait->second);
+            if (ait->second->getNodes().size() > 1)
+                streetsArcs.push_back(ait->first);
+        }
+    }
+}
+
+void CityGMLCore::processRelations(std::set<std::string> &usedWays)
+{
+    // Loop through each relation in the OSM data
+    for (auto rit = osm.getRelations().begin(); rit != osm.getRelations().end();) {
+        auto tags = rit->second->getTags();
+
+        // Lambda function to check if the relation represents a multipolygon
+        auto checkMultipolygon = [](std::pair<std::string, std::string> p) {
+            return ((p.first.compare("type") == 0) && p.second.compare("multipolygon") == 0);
+        };
+
+        // Lambda function to check if the relation represents a building
+        auto checkBuilding = [](std::pair<std::string, std::string> p) {
+            return (p.first.compare("building")) == 0;
+        };
+
+        // We only consider relations defining buildings as multipolygons
+        if (std::find_if(tags.begin(), tags.end(), checkMultipolygon) != tags.end() &&
+            std::find_if(tags.begin(), tags.end(), checkBuilding) != tags.end()) {
+
+            // Get the ways representing the building boundaries
+            auto buildingBoundaries = rit->second->getWays();
+            auto building = std::make_shared<Building>();
+            std::vector<VertexList> buildingBoundariesPoints;
+            bool hasOuter = false;
+            bool invalidRelation = false;
+
+            // Loop through each boundary way of the building
+            for (auto bbit = buildingBoundaries.begin(); bbit != buildingBoundaries.end(); bbit++) {
+
+                if (bbit->first == nullptr)
+                    continue;
+
+                // Check if the way has already been used, if not, add it to the usedWays set
+                auto it = std::find(usedWays.begin(), usedWays.end(), bbit->first->getId());
+                if (it == usedWays.end()) {
+                    usedWays.insert(bbit->first->getId());
+
+                    // Get the nodes (vertices) of the boundary
+                    auto boundaryNodes = bbit->first->getNodes();
+                    VertexList boundaryPoints;
+
+                    // The isPolygonClockwise function requires the polygon to be open (the last segment is implicit)
+                    if (boundaryNodes.at(0)->getId() == boundaryNodes.back()->getId())
+                        boundaryNodes.pop_back();
+
+                    // Loop through each node (vertex) of the boundary way
+                    for (uint j = 0; j < boundaryNodes.size(); j++) {
+                        auto p = boundaryNodes.at(j)->getCoordinates();
+
+                        // Check if the vertex already exists in the osmPointToMeshPointMap, if not, add it
+                        if (osmPointToMeshPointMap.find(p) == osmPointToMeshPointMap.end()) {
+                            auto newVertex = std::make_shared<Vertex>(p->x, p->y, 0);
+                            newVertex->setInfo(boundaryNodes.at(j));
+                            osmPointToMeshPointMap.insert(std::make_pair(p, newVertex));
+                            boundaryPoints.push_back(newVertex);
+                        } else
+                            boundaryPoints.push_back(osmPointToMeshPointMap.at(p));
+                    }
+
+                    // Check if the polygon representing the boundary is clockwise or anti-clockwise
+                    bool isClockwise = Utilities::isPolygonClockwise(vertexToPointList(boundaryPoints));
+
+                    // Re-close the polygon by adding the first vertex at the end
+                    boundaryPoints.push_back(boundaryPoints.at(0));
+
+                    // Next part is performed only if we are in the outmost boundary of the multipolygon
+                    if (bbit->second.compare("outer") == 0) {
+                        if (!hasOuter) {
+                            hasOuter = true;
+                            // Exterior boundaries are in anti-clockwise order by convention.
+                            if (isClockwise)
+                                std::reverse(boundaryPoints.begin(), boundaryPoints.end());
+                            // The first boundary of the list is the outmost one.
+                            buildingBoundariesPoints.insert(buildingBoundariesPoints.begin(), boundaryPoints);
+                            building->addOuterBoundary(boundaryPoints);
+                        } else {
+                            // TO DO: The case of multiple outer boundaries needs to be discussed and handled accordingly.
+                            // For now, surplus outer boundaries are eliminated by removing the way and erasing it from usedWays.
+                            buildingsArcs.push_back(bbit->first->getId());
+                            rit->second->removeWay(bbit->first);
+                            usedWays.erase(bbit->first->getId());
+                        }
+                    } else {
+                        // Interior boundaries are in clockwise order by convention.
+                        if (!isClockwise)
+                            std::reverse(boundaryPoints.begin(), boundaryPoints.end());
+                        buildingBoundariesPoints.push_back(boundaryPoints);
+                        building->addInnerBoundary(boundaryPoints);
+                    }
+                } else {
+                    // The way has been used in another relation, marking the current relation as invalid.
+                    invalidRelation = true;
+                    break;
+                }
+            }
+
+            // If the relation is valid (no duplicate ways used), add the building to the buildings vector and move to the next relation.
+            if (!invalidRelation) {
+                building->setId(std::to_string(buildings.size()));
+                buildings.push_back(building);
+                rit++;
+            } else {
+                // If the relation is invalid, remove it from the OSM data and move to the next relation.
+                rit = osm.removeRelation(rit->second->getId());
+            }
+        } else
+            rit++; // Move to the next relation if it does not represent a building multipolygon.
+    }
+
+}
+
+void CityGMLCore::processBuildingWays(std::set<std::string> &usedWays)
+{
+    // Loop through each building way ID in the buildingsArcs vector
+    for (auto ait = buildingsArcs.begin(); ait != buildingsArcs.end(); ait++) {
+        // Check if the way has not been used yet
+        if (std::find(usedWays.begin(), usedWays.end(), *ait) == usedWays.end()) {
+            std::vector<VertexList> buildingBoundariesPoints;
+            VertexList boundaryPoints;
+
+            // Get the nodes (vertices) of the way
+            auto nodes = osm.getWays().at(*ait)->getNodes();
+
+            // The isPolygonClockwise function requires the polygon to be open (the last segment is implicit)
+            if (nodes.at(0)->getId() == nodes.back()->getId())
+                nodes.pop_back();
+
+            // Loop through each node (vertex) of the way
+            for (uint j = 0; j < nodes.size(); j++) {
+                auto p = nodes.at(j)->getCoordinates();
+
+                // Check if the vertex already exists in the osmPointToMeshPointMap, if not, add it
+                if (osmPointToMeshPointMap.find(p) == osmPointToMeshPointMap.end()) {
+                    auto newVertex = std::make_shared<Vertex>(p->x, p->y, 0);
+                    newVertex->setInfo(nodes.at(j));
+                    osmPointToMeshPointMap.insert(std::make_pair(p, newVertex));
+                    boundaryPoints.push_back(newVertex);
+                } else
+                    boundaryPoints.push_back(osmPointToMeshPointMap.at(p));
+            }
+
+            // Check if the polygon representing the boundary is clockwise or anti-clockwise
+            bool isClockwise = Utilities::isPolygonClockwise(vertexToPointList(boundaryPoints));
+
+            // Re-close the polygon by adding the first vertex at the end
+            boundaryPoints.push_back(boundaryPoints.at(0));
+
+            // Exterior boundaries are in anti-clockwise order by convention.
+            if (isClockwise)
+                std::reverse(boundaryPoints.begin(), boundaryPoints.end());
+
+            // Create a new Building object, add the outer boundary, and assign an ID
+            buildings.push_back(std::make_shared<Building>());
+            buildings.back()->addOuterBoundary(boundaryPoints);
+            buildings.back()->setId(std::to_string(buildings.size()));
+        }
+    }
+}
+
+void CityGMLCore::preProcessBuildings()
+{
+    // Remove buildings with vertices outside the bounds
+    for (auto iit = buildings.begin(); iit != buildings.end();) {
+        std::vector<VertexList> building_boundaries = (*iit)->getOutlines();
+        bool erased = false;
+
+        // Loop through each boundary of the building
+        for (auto jit = building_boundaries.begin(); jit != building_boundaries.end(); jit++) {
+            for (auto kit = jit->begin(); kit != jit->end(); kit++) {
+                // Check if any vertex of the boundary is outside the bounds
+                if (isPointOutsideBounds(*kit)) {
+                    // Reset all vertices and clear the boundary if any vertex is outside the bounds
+                    for (auto kit = jit->begin(); kit != jit->end(); kit++)
+                        kit->reset();
+                    jit->clear();
+                    iit = buildings.erase(iit); // Erase the building from the buildings vector
+                    erased = true;
+                    break;
+                }
+            }
+            if (erased)
+                break;
+        }
+        if (!erased)
+            iit++; // Move to the next building if the current one is not erased
+    }
+
+    // Remove buildings contained within other buildings (buildings inside other buildings cannot be handled)
+    for (auto it = buildings.begin(); it != buildings.end();) {
+        auto building1 = *it;
+
+        // Find if there is any other building that contains the current building
+        auto containedIt = std::find_if(buildings.begin(), buildings.end(), [building1](std::shared_ptr<Building> building2) {
+            if (building1->getId().compare(building2->getId()) == 0)
+                return false;
+
+            bool contained = false;
+            auto boundaries1 = building1->getOutlines();
+            auto boundaries2 = building2->getOutlines();
+
+            // Convert the boundaries into vector of shared pointers to facilitate the comparison
+            std::vector<std::shared_ptr<SemantisedTriangleMesh::Point>> boundary1(boundaries1[0].begin(), boundaries1[0].end());
+            std::vector<std::shared_ptr<SemantisedTriangleMesh::Point>> boundary2(boundaries2[0].begin(), boundaries2[0].end());
+
+            // Check if building1 is completely inside building2 (building2 contains building1)
+            if (Utilities::isPolygonInsidePolygon(boundary1, boundary2)) {
+                contained = true;
+                for (uint j = 1; j < boundaries2.size(); j++) {
+                    // Check if any other boundary of building2 contains building1
+                    std::vector<std::shared_ptr<SemantisedTriangleMesh::Point>> boundary3(boundaries2[j].begin(), boundaries2[j].end());
+                    if (Utilities::isPolygonInsidePolygon(boundary1, boundary3)) {
+                        contained = false;
+                        break;
+                    }
+                }
+                if (!contained)
+                    return false;
+            }
+            return contained;
+        });
+
+        // If building1 is contained inside another building, erase it from the buildings vector
+        if (containedIt != buildings.end())
+            it = buildings.erase(it);
+        else
+            it++;
+    }
+
+}
+
+void CityGMLCore::groupBuildings(std::vector<std::shared_ptr<BuildingsGroup> >& groups)
+{
+
+    std::set<std::string> usedBuildings;
+    unsigned int reachedGroupId = 0;
+    for(auto bit1 = buildings.begin(); bit1 != buildings.end(); bit1++)
+    {
+        auto it = usedBuildings.find((*bit1)->getId());
+        if(it == usedBuildings.end())
+            usedBuildings.insert((*bit1)->getId());
+        auto group = std::make_shared<BuildingsGroup>();
+        std::queue<std::shared_ptr<Building> > queue;
+        queue.push((*bit1));
+        while(!queue.empty())
+        {
+            auto building = queue.front();
+            if(building->getId().compare((*bit1)->getId()) != 0)
+            {
+                (*bit1)->addAdjacentBuilding(building);
+                building->addAdjacentBuilding(*bit1);
+            }
+            queue.pop();
+            group->addBuilding(building);
+            for(auto bit2 = buildings.begin(); bit2 != buildings.end(); bit2++)
+            {
+                auto it = usedBuildings.find((*bit2)->getId());
+                if((*bit1)->getId().compare((*bit2)->getId()) != 0 && it == usedBuildings.end() &&
+                    arePolygonsAdjacent(building->getOutlines().at(0), (*bit2)->getOutlines().at(0)))
+                {
+                    usedBuildings.insert((*bit2)->getId());
+                    queue.push(*bit2);
+                }
+            }
+        }
+        if(group->getBuildings().size() > 1)
+        {
+            group->setId(std::to_string(reachedGroupId++));
+            groups.push_back(group);
+        }
+
+    }
+}
+
+void CityGMLCore::generateVertices(std::vector<VertexList> &arcsPoints)
+{
+    // Remove streets with less than 2 nodes (vertices)
+    for (auto ait = streetsArcs.begin(); ait != streetsArcs.end();) {
+        if (osm.getWays().at(*ait)->getNodes().size() < 2) {
+            // Erase the street from the streetsArcs vector if it has less than 2 nodes (vertices)
+            ait = streetsArcs.erase(ait);
+        } else {
+            VertexList arc_points;
+            auto arc_nodes = osm.getWays().at(*ait)->getNodes();
+
+            // Convert the nodes into vertices and add them to the arc_points vector
+            for (auto node : arc_nodes) {
+                auto p = node->getCoordinates();
+                if (osmPointToMeshPointMap.find(p) == osmPointToMeshPointMap.end()) {
+                    auto newVertex = std::make_shared<Vertex>(p->x, p->y, 0);
+                    newVertex->setInfo(node);
+                    osmPointToMeshPointMap.insert(std::make_pair(p, newVertex));
+                    arc_points.push_back(newVertex);
+                } else
+                    arc_points.push_back(osmPointToMeshPointMap.at(p));
+            }
+
+            // Add the vertices of the street to the arcsPoints vector
+            arcsPoints.push_back(arc_points);
+            ait++; // Move to the next street arc
+        }
+    }
+
+}
+
+void CityGMLCore::processBuildingsGroups(std::vector<std::shared_ptr<BuildingsGroup> >& groups, std::vector<std::vector<VertexList> >& triangulationHoles,
+                            std::set<std::string>& usedBuildings)
+{
+    // Loop through each group in the groups vector
+    for (auto group : groups) {
+        // Compute the adjacency graph for the current group of buildings
+        group->computeAdjacencyGraph();
+
+        // Extract the overall base polygon of the group
+        auto groupBoundaries = group->extractOverallBasePolygon();
+
+        // Counter variable to keep track of building indices within the group
+        uint counter = 0;
+
+        // Get the list of buildings to be triangulated within the current group
+        auto buildingsToBeTriangulated = group->getBuildings();
+
+        // Vector to store inner vertices of the group (vertices that are not part of building outlines)
+        std::vector<std::shared_ptr<Vertex>> groupInnerVertices;
+
+        // Loop through each building in the group
+        for (auto building : group->getBuildings()) {
+            // Check if the building's ID is already in the usedBuildings set
+            auto it = std::find(usedBuildings.begin(), usedBuildings.end(), building->getId());
+
+            // Check for consistency: a building should only belong to one group
+            if (it != usedBuildings.end()) {
+                std::cerr << "Impossible, all buildings that are part of a group must be in that group. There couldn't be more groups containing a building.";
+                exit(12);
+            }
+
+            // Add the building's ID to the usedBuildings set
+            usedBuildings.insert(building->getId());
+        }
+
+        // Add the group boundaries to the triangulationHoles vector for later triangulation
+        triangulationHoles.push_back(groupBoundaries);
+    }
+
+    // Loop through each building in the buildings vector
+    for (auto it = buildings.begin(); it != buildings.end();) {
+        auto building = *it;
+
+        // Check if the building is not already used in a group
+        auto usedIt = std::find_if(usedBuildings.begin(), usedBuildings.end(), [building](std::string s) { return building->getId().compare(s) == 0; });
+        if (usedIt == usedBuildings.end()) {
+            // Check if the building is not completely contained inside any existing triangulation hole
+            auto containedIt = std::find_if(triangulationHoles.begin() + 1, triangulationHoles.end(), [building](std::vector<VertexList> list) {
+                bool contained = false;
+                auto boundaries = building->getOutlines();
+
+                // Convert building and triangulation hole boundaries into vectors of shared pointers
+                std::vector<std::shared_ptr<SemantisedTriangleMesh::Point>> boundary1(boundaries[0].begin(), boundaries[0].end());
+                std::vector<std::shared_ptr<SemantisedTriangleMesh::Point>> boundary2(list[0].begin(), list[0].end());
+
+                // Check if building is completely inside the current triangulation hole (list[0])
+                if (Utilities::isPolygonInsidePolygon(boundary1, boundary2)) {
+                    contained = true;
+                    for (uint j = 1; j < list.size(); j++) {
+                        // Check if building is inside any other hole (list[j])
+                        std::vector<std::shared_ptr<SemantisedTriangleMesh::Point>> boundary3(list[j].begin(), list[j].end());
+                        if (Utilities::isPolygonInsidePolygon(boundary1, boundary3)) {
+                            contained = false;
+                            break;
+                        }
+                    }
+                    if (!contained)
+                        return false;
+                }
+
+                return contained;
+            });
+
+            if (containedIt == triangulationHoles.end()) {
+                // If the building is not contained inside any hole, add its outlines to the triangulationHoles vector
+                triangulationHoles.push_back(building->getOutlines());
+                it++; // Move to the next building
+            } else {
+                // If the building is completely contained inside a hole, remove it from the buildings vector
+                it = buildings.erase(it);
+            }
+        } else {
+            it++; // Move to the next building if it is already part of a group
+        }
+    }
+
+
+}
+
+void CityGMLCore::reInsertStreetsClippings(std::vector<std::pair<uint, uint> > keptClippings, std::vector<VertexList >& arcsPoints)
+{
+    // Loop through the ranges in keptClippings vector
+    for (uint i = 0; i < keptClippings.size(); i++)
+    {
+        // Calculate the number of new lines to insert
+        uint numberOfNewLines = keptClippings.at(i).second - keptClippings.at(i).first;
+
+        // Loop through the new lines to insert
+        for (uint j = 0; j < numberOfNewLines; j++)
+        {
+            // Get the previous line and clipping to merge
+            VertexList prevLine = arcsPoints.at(keptClippings.at(i).first);
+            VertexList clipping = arcsPoints.at(keptClippings.at(i).first + j + 1);
+
+            // Check if the first two vertices in the clipping are identical, remove one if they are
+            if (clipping.at(0)->getId().compare(clipping.at(1)->getId()) == 0)
+                clipping.erase(clipping.begin());
+
+            // Check if the last two vertices in the previous line are identical, remove one if they are
+            if (prevLine.at(prevLine.size() - 2)->getId().compare(prevLine.at(prevLine.size() - 1)->getId()) == 0)
+                arcsPoints.at(keptClippings.at(i).first).pop_back();
+
+            // Append the clipping to the previous line
+            arcsPoints.at(keptClippings.at(i).first).insert(arcsPoints.at(keptClippings.at(i).first).end(), clipping.begin(), clipping.end());
+        }
+
+        // Erase the lines within the range [first, second] (excluding the first line)
+        arcsPoints.erase(arcsPoints.begin() + keptClippings.at(i).first + 1, arcsPoints.begin() + keptClippings.at(i).second + 1);
+
+        // Adjust the indices of the remaining ranges in keptClippings vector
+        for (uint j = i + 1; j < keptClippings.size(); j++)
+        {
+            keptClippings.at(j).first -= numberOfNewLines;
+            keptClippings.at(j).second -= numberOfNewLines;
+        }
+    }
+}
+/*****************************************************************************/
 
 int CityGMLCore::buildLevel0()
 {
-    if(osmIsLoaded && dtmIsLoaded)
+    if(osmIsLoaded)
     {
 
         if(meshes[0] != nullptr)
@@ -1201,15 +1443,7 @@ int CityGMLCore::buildLevel0()
 
         meshes[0] = std::make_shared<TriangleMesh>();
 
-        /* Following GDAL definition:
-         *  GT(0) x-coordinate of the upper-left corner of the upper-left pixel.
-         *  GT(1) w-e pixel resolution / pixel width.
-         *  GT(2) row rotation (typically zero).
-         *  GT(3) y-coordinate of the upper-left corner of the upper-left pixel.
-         *  GT(4) column rotation (typically zero).
-         *  GT(5) n-s pixel resolution / pixel height (negative value for a north-up image).
-         */
-        double* geoTransform = dtm->GetGeoTransform();
+        // Calculate the minimum and maximum coordinates from lidarDTMPoints and bounds
         SemantisedTriangleMesh::Point min(std::numeric_limits<double>::max(),
                   std::numeric_limits<double>::max(),
                   0);
@@ -1217,45 +1451,11 @@ int CityGMLCore::buildLevel0()
                   -std::numeric_limits<double>::max(),
                   0);
 
-
-        auto origin = std::make_shared<SemantisedTriangleMesh::Point>(0,0,0);
-        uint points_number = 0;
-
-        for(uint i = 0; i < lidarDTMPoints.size(); i++)
-        {
-            if(lidarDTMPoints.at(i)->getX() < min.getX())
-                min.setX(lidarDTMPoints.at(i)->getX());
-            if(lidarDTMPoints.at(i)->getY() < min.getY())
-                min.setY(lidarDTMPoints.at(i)->getY());
-            if(lidarDTMPoints.at(i)->getX() > max.getX())
-                max.setX(lidarDTMPoints.at(i)->getX());
-            if(lidarDTMPoints.at(i)->getY() > max.getY())
-                max.setY(lidarDTMPoints.at(i)->getY());
-            (*origin) += (*lidarDTMPoints.at(i));
-            points_number++;
-        }
-
-
-        for(uint j = 0; j < static_cast<uint>(dtm->GetDimensions()[0]); j++)
-            for(uint k = 0; k < static_cast<uint>(dtm->GetDimensions()[1]); k++)
-            {
-
-                SemantisedTriangleMesh::Point p(geoTransform[0] + (k + 0.5) * geoTransform[1] + j * geoTransform[2],
-                          geoTransform[3] + k * geoTransform[4] + (j + 0.5) * geoTransform[5], 0);
-
-                (*origin) += p;
-                points_number++;
-            }
-
+        calculateMinMax(min, max);
+        auto origin = std::make_shared<SemantisedTriangleMesh::Point>((min + max) / 2);
         double city_size = (max - min).norm();
-        (*origin) /= points_number;
 
-
-        std::cout.precision(15);
-        std::cout << "size:" << city_size << std::endl;
-        origin->print(std::cout);
         origin->setZ(0);
-
 
         for(auto node : osm.getNodes()){
             auto pos = node.second->getCoordinates();
@@ -1263,289 +1463,46 @@ int CityGMLCore::buildLevel0()
             *pos -= origin2D;
             *pos /= city_size;
         }
-        for(auto p : lidarDTMPoints)
-        {
-            *p -= *origin;
-            *p /= city_size;
-        }
 
-        for(auto p : lidarDSMPoints)
-        {
-            *p -= *origin;
-            *p /= city_size;
-        }
+        //Points normalization for reducing precision errors
+        normalizePoints(lidarDTMPoints, origin, city_size);
+        normalizePoints(lidarDSMPoints, origin, city_size);
+        for (auto& bound : bounds)
+            normalizePoints(bound, origin, city_size);
 
-        for(auto bound : bounds)
-            for(auto p : bound)
-            {
-                *p -= *origin;
-                *p /= city_size;
-            }
         std::vector<PointList > boundaries;
 
         std::cout << "Cleaning polygons/lines" << std::endl;
 
-        for(auto nit = osm.getNodes().begin(); nit != osm.getNodes().end();)
-        {
-            auto p = nit->second->getCoordinates();
-            auto point = std::make_shared<SemantisedTriangleMesh::Point>(p->x, p->y, 0);
-            if(isPointOutsideBounds(point))
-                nit = osm.removeNode(nit->second->getId());
-            else
-                nit++;
-        }
-        for(auto ait = osm.getWays().begin(); ait != osm.getWays().end(); ait++)
-        {
-            if(ait->second->checkTag(std::make_pair("building","")))
-                buildingsArcs.push_back(ait->first);
-
-            if(ait->second->checkTag(std::make_pair("highway", "")) && (!ait->second->checkTag(std::make_pair("area", "")) || ait->second->checkTag(std::make_pair("area", "no"))))
-            {
-                fixWay(ait->second);
-                if(ait->second->getNodes().size() > 1)
-                    streetsArcs.push_back(ait->first);
-            }
-
-        }
+        filterNodesOutsideBounds();
+        processOpenStreetMapWays();
 
         this->buildings.clear();
         std::set<std::string> usedWays;
+        std::cout.precision(15);
+        std::cout << city_size << std::endl;
+        origin->print(std::cout, BracketsType::NONE, " ");
+        std::cout << std::endl;
 
-        //TO DO: IMPLEMENTARE PULIZIA BOUNDARY QUI
-
-        for(auto rit = osm.getRelations().begin(); rit != osm.getRelations().end();)
-        {
-            auto tags = rit->second->getTags();
-
-            auto checkMultipolygon = [](std::pair<std::string, std::string> p)
-                { return ((p.first.compare("type") == 0) && p.second.compare("multipolygon") == 0); };
-
-            auto checkBuilding = [](std::pair<std::string, std::string> p)
-                { return (p.first.compare("building")) == 0; };
-
-            //We only take into consideration relations defining buildings as multipolygons
-            if(std::find_if(tags.begin(), tags.end(), checkMultipolygon) != tags.end() &&
-               std::find_if(tags.begin(), tags.end(), checkBuilding) != tags.end() )
-            {
-                auto buildingBoundaries = rit->second->getWays();
-                auto building = std::make_shared<Building>();
-                std::vector<VertexList> buildingBoundariesPoints;
-                bool hasOuter = false;
-                bool invalidRelation = false;
-                for(auto bbit = buildingBoundaries.begin(); bbit != buildingBoundaries.end(); bbit++)
-                {
-                    if(bbit->first == nullptr)
-                        continue;
-                    //Checking if we already used the way: may be unnecessary, but better be sure
-                    auto it = std::find(usedWays.begin(), usedWays.end(), bbit->first->getId());
-                    if(it == usedWays.end())
-                    {
-                        usedWays.insert(bbit->first->getId());
-
-                        auto boundaryNodes = bbit->first->getNodes();
-                        VertexList boundaryPoints;
-
-                        //The isPolygonClockwise function requires the polygon to be open (the last segment is implicit)
-                        if(boundaryNodes.at(0)->getId() == boundaryNodes.back()->getId())
-                            boundaryNodes.pop_back();
-
-                        for(uint j = 0; j < boundaryNodes.size(); j++)
-                        {
-                            auto p = boundaryNodes.at(j)->getCoordinates();
-
-                            if(osmPointToMeshPointMap.find(p) == osmPointToMeshPointMap.end())
-                            {
-                                auto newVertex = std::make_shared<Vertex>(p->x, p->y, 0);
-                                newVertex->setInfo(boundaryNodes.at(j));
-                                osmPointToMeshPointMap.insert(std::make_pair(p, newVertex));
-                                boundaryPoints.push_back(newVertex);
-                            } else
-                                boundaryPoints.push_back(osmPointToMeshPointMap.at(p));
-
-                        }
-
-                        bool isClockwise = Utilities::isPolygonClockwise(vertexToPointList(boundaryPoints));
-
-                        //Re-closing the polygon
-                        boundaryPoints.push_back(boundaryPoints.at(0));
-
-                        //Next part is performed only if we are in the outmost boundary of the multipolygon
-                        if(bbit->second.compare("outer") == 0)
-                        {
-                            if(!hasOuter)
-                            {
-                                hasOuter = true;
-                                //Exterior boundaries are in anti-clockwise order by convention.
-                                if(isClockwise)
-                                    std::reverse(boundaryPoints.begin(), boundaryPoints.end());
-                                //The first boundary of the list is the outmost one.
-                                buildingBoundariesPoints.insert(buildingBoundariesPoints.begin(), boundaryPoints);
-                                building->addOuterBoundary(boundaryPoints);
-                            } else
-                            {
-                                //TO DO: il caso di boundary esterni multipli è da discutere e gestire di conseguenza. Al momento si eliminano i surplus.
-                                buildingsArcs.push_back(bbit->first->getId());
-                                rit->second->removeWay(bbit->first);
-                                usedWays.erase(bbit->first->getId());
-                            }
-                        }else
-                        {
-                            //Interior boundaries are in clockwise order by convention.
-                            if(!isClockwise)
-                                std::reverse(boundaryPoints.begin(), boundaryPoints.end());
-                            buildingBoundariesPoints.push_back(boundaryPoints);
-                            building->addInnerBoundary(boundaryPoints);
-                        }
-                    } else
-                    {
-                        invalidRelation = true;
-                        break;
-                    }
-
-                }
-
-                //Ways need to be used only once
-                if(!invalidRelation)
-                {
-                    building->setId(std::to_string(buildings.size()));
-                    buildings.push_back(building);
-                    rit++;
-                }
-                else
-                {
-                    rit = osm.removeRelation(rit->second->getId());
-                }
-
-            } else
-                rit++;
-        }
-
-
+        //Buildings are partly defined as relations and partly as ways
+        processRelations(usedWays);
         //Remaining buildings are defined by simple OSMWays
-        for(auto ait = buildingsArcs.begin(); ait != buildingsArcs.end(); ait++)
-        {
-            //Ways need to be used only once
-            if(std::find(usedWays.begin(), usedWays.end(), *ait) == usedWays.end())
-            {
-                std::vector<VertexList > buildingBoundariesPoints;
-                VertexList boundaryPoints;
-                auto nodes = osm.getWays().at(*ait)->getNodes();
-                //The isPolygonClockwise function requires the polygon to be open (the last segment is implicit)
-                if(nodes.at(0)->getId() == nodes.back()->getId())
-                    nodes.pop_back();
-
-                for(uint j = 0; j < nodes.size(); j++)
-                {
-                    auto p = nodes.at(j)->getCoordinates();
-                    if(osmPointToMeshPointMap.find(p) == osmPointToMeshPointMap.end())
-                    {
-                        auto newVertex = std::make_shared<Vertex>(p->x, p->y, 0);
-                        newVertex->setInfo(nodes.at(j));
-                        osmPointToMeshPointMap.insert(std::make_pair(p, newVertex));
-                        boundaryPoints.push_back(newVertex);
-                    } else
-                        boundaryPoints.push_back(osmPointToMeshPointMap.at(p));
-
-                }
-
-                bool isClockwise = Utilities::isPolygonClockwise(vertexToPointList(boundaryPoints));
-                //Re-closing the polygon
-                boundaryPoints.push_back(boundaryPoints.at(0));
-
-                //Exterior boundaries are in anti-clockwise order by convention.
-                if(isClockwise)
-                    std::reverse(boundaryPoints.begin(), boundaryPoints.end());
-
-                buildings.push_back(std::make_shared<Building>());
-                buildings.back()->addOuterBoundary(boundaryPoints);
-                buildings.back()->setId(std::to_string(buildings.size()));
-            }
-
-        }
-
+        processBuildingWays(usedWays);
         //Removing buildings with points outside the bounds
-        for(auto iit = buildings.begin(); iit != buildings.end(); iit++)
-        {
-            std::vector<VertexList> building_boundaries = (*iit)->getBoundaries();
-            for(auto jit = building_boundaries.begin(); jit != building_boundaries.end(); jit++)
-            {
-                bool erased = false;
-                for(auto kit = jit->begin(); kit != jit->end(); kit++)
-                {
-                    if(isPointOutsideBounds(*kit))
-                    {
-                        for(auto kit = jit->begin(); kit != jit->end(); kit++)
-                            kit->reset();
-                        jit->clear();
-                        iit = buildings.erase(iit);
-                        iit--;
-                        erased = true;
-                        break;
-                    }
-                }
-                if(erased)
-                    break;
-            }
-        }
-
-        //Elimina edifici contenuti in altri edifici (non possiamo gestire cose dentro agli edifici)
-
-        for(auto it = buildings.begin(); it != buildings.end(); it++)
-        {
-            auto building1 = *it;
-            auto containedIt = std::find_if(buildings.begin(), buildings.end(), [building1](std::shared_ptr<Building> building2)
-                {
-                    if(building1->getId().compare(building2->getId()) == 0)
-                        return false;
-                    bool contained = false;
-                    auto boundaries1 = building1->getBoundaries();
-                    auto boundaries2 = building2->getBoundaries();
-
-                    std::vector<std::shared_ptr<SemantisedTriangleMesh::Point> > boundary1(boundaries1[0].begin(), boundaries1[0].end());
-                    std::vector<std::shared_ptr<SemantisedTriangleMesh::Point> > boundary2(boundaries2[0].begin(), boundaries2[0].end());
-
-                    if(Utilities::isPolygonInsidePolygon(boundary1, boundary2))
-                    {
-                        contained = true;
-                        for(uint j = 1; j < boundaries2.size(); j++)
-                        {
-
-                            std::vector<std::shared_ptr<SemantisedTriangleMesh::Point> > boundary3(boundaries2[j].begin(), boundaries2[j].end());
-
-                            if(Utilities::isPolygonInsidePolygon(boundary1, boundary3))
-                            {
-                                contained = false;
-                                break;
-                            }
-                        }
-                        if(!contained)
-                            return false;
-                    }
-
-                    return contained;
-                });
-
-            if(containedIt != buildings.end())
-            {
-                it = buildings.erase(it);
-                it--;
-            }
-        }
+        preProcessBuildings();
 
         std::cout << "Removing nodes into buildings"<< std::endl;
         removeOSMWayNodesFromBuildings(streetsArcs);
 
-        //Fixing building boundaries
-        for(auto bit = buildings.begin(); bit != buildings.end(); bit++)
+        //Fixing building boundaries after managing collision between buildings and streets
+        for(auto bit = buildings.begin(); bit != buildings.end();)
         {
             (*bit)->fixBoundaries();
-            if((*bit)->getBoundaries().size() == 0)
-            {
+            if((*bit)->getOutlines().size() == 0)
                 bit = buildings.erase(bit);
-                bit--;
-            }
+            else
+                bit++;
         }
-
 
         std::vector<VertexList > external_bb = {{
             std::make_shared<Vertex>(min.getX(), min.getY(), 0.0),
@@ -1560,81 +1517,19 @@ int CityGMLCore::buildLevel0()
 
         std::vector<std::vector<VertexList> > triangulationHoles = {external_bb};
 
-        std::set<std::string> usedBuildings;
         std::vector<std::shared_ptr<BuildingsGroup> > groups;
-
         std::cout << "Creating buildings' groups" << std::endl;
-        unsigned int reachedGroupId = 0;
-        for(auto bit1 = buildings.begin(); bit1 != buildings.end(); bit1++)
-        {
-            auto it = usedBuildings.find((*bit1)->getId());
-            if(it == usedBuildings.end())
-                usedBuildings.insert((*bit1)->getId());
-            auto group = std::make_shared<BuildingsGroup>();
-            std::queue<std::shared_ptr<Building> > queue;
-            queue.push((*bit1));
-            while(!queue.empty())
-            {
-                auto building = queue.front();
-                if(building->getId().compare((*bit1)->getId()) != 0)
-                {
-                    (*bit1)->addAdjacentBuilding(building);
-                    building->addAdjacentBuilding(*bit1);
-                }
-                queue.pop();
-                group->addBuilding(building);
-                for(auto bit2 = buildings.begin(); bit2 != buildings.end(); bit2++)
-                {
-                    auto it = usedBuildings.find((*bit2)->getId());
-                    if((*bit1)->getId().compare((*bit2)->getId()) != 0 && it == usedBuildings.end() &&
-                        arePolygonsAdjacent(building->getBoundaries().at(0), (*bit2)->getBoundaries().at(0)))
-                    {
-                        usedBuildings.insert((*bit2)->getId());
-                        queue.push(*bit2);
-                    }
-                }
-            }
-            if(group->getBuildings().size() > 1)
-            {
-                group->setId(std::to_string(reachedGroupId++));
-                groups.push_back(group);
-            }
-
-        }
+        groupBuildings(groups);
         std::cout << "Ended!" << std::endl;
-        usedBuildings.clear();
 
 
+        std::vector<VertexList > arcsPoints, constraints; //Constraints are all the points that must be inserted in the triangulation
 
-        std::vector<VertexList > arcsPoints, constraints;
-
-        for(auto ait = streetsArcs.begin(); ait != streetsArcs.end(); )
-            if(osm.getWays().at(*ait)->getNodes().size() < 2)
-            {
-                ait = streetsArcs.erase(ait);
-            } else
-            {
-                VertexList arc_points;
-                auto arc_nodes = osm.getWays().at(*ait)->getNodes();
-
-                for(auto node : arc_nodes)
-                {
-                    auto p = node->getCoordinates();
-                    if(osmPointToMeshPointMap.find(p) == osmPointToMeshPointMap.end())
-                    {
-                        auto newVertex = std::make_shared<Vertex>(p->x, p->y, 0);
-                        newVertex->setInfo(node);
-                        osmPointToMeshPointMap.insert(std::make_pair(p, newVertex));
-                        arc_points.push_back(newVertex);
-                    } else
-                        arc_points.push_back(osmPointToMeshPointMap.at(p));
-                }
-
-                arcsPoints.push_back(arc_points);
-                ait++;
-            }
+        //Vertices generation from arcs
+        generateVertices(arcsPoints);
 
 
+        //Remove OSMNodes that are not part of the scene
         for(auto nit = osm.getNodes().begin(); nit != osm.getNodes().end();)
         {
             auto n = *nit;
@@ -1645,10 +1540,7 @@ int CityGMLCore::buildLevel0()
                 nit++;
         }
 
-
-
-//        std::cout << "Refining lines:" << std::endl;
-//        Utilities::refineLines(arcsPoints, dtm.get(), city_size, *origin);
+        //Checking if an arc is a singlet (error)
         for(uint i = 0; i < arcsPoints.size(); i++)
             if(arcsPoints.at(i).size() == 1)
             {
@@ -1658,8 +1550,8 @@ int CityGMLCore::buildLevel0()
 
 
         std::cout << "Removing inserted critical vertices:" << std::endl;
-
         removeLinePointsInsideBuildings(arcsPoints);
+
         std::cout << "Ended!" << std::endl;
 
         for(uint i = 0; i < arcsPoints.size(); i++)
@@ -1670,125 +1562,35 @@ int CityGMLCore::buildLevel0()
                 i--;
             }
 
-
         std::cout << "Removing segments intersecting buildings:" << std::endl;
+        //Removing arcs' clippings
         auto keptClippings = removeSegmentsIntersectingBuildings(arcsPoints);  //VA SISTEMATO, DEVE USARE I GRUPPI DI EDIFICI
         std::cout << "Ended!" << std::endl;
-
         std::cout << "Extracting overall polygons" << std::endl;
-        for(auto group : groups)
-        {
-            group->computeAdjacencyGraph();
-            auto groupBoundaries = group->extractOverallBasePolygon();
-            uint counter = 0;
-            auto buildingsToBeTriangulated = group->getBuildings();
-            std::vector<std::shared_ptr<Vertex> > groupInnerVertices;
 
-            for(auto building : group->getBuildings())
-            {
-                auto it = std::find(usedBuildings.begin(), usedBuildings.end(), building->getId());
-                if(it != usedBuildings.end())
-                {
-                    std::cerr << "Impossible, all buildings that are part of a group must be in that group. There couldn't be more groups containing a building.";
-                    exit(12);
-                }
+        // Set to keep track of used buildings (by their IDs) to ensure buildings are not part of multiple groups
+        std::set<std::string> usedBuildings;
 
-                usedBuildings.insert(building->getId());
-            }
-            triangulationHoles.push_back(groupBoundaries);
-        }
-
+        processBuildingsGroups(groups, triangulationHoles, usedBuildings);
         std::cout << "Ended!" << std::endl;
-
-
-
-        //check if redundant with previous check
-        for(auto it = buildings.begin(); it != buildings.end(); it++)
-        {
-            auto building = *it;
-
-            auto usedIt = std::find_if(usedBuildings.begin(), usedBuildings.end(), [building](std::string s){ return building->getId().compare(s) == 0;});
-            if(usedIt == usedBuildings.end())
-            {
-                auto containedIt = std::find_if(triangulationHoles.begin() + 1, triangulationHoles.end(), [building](std::vector<VertexList> list)
-                    {
-                        bool contained = false;
-                        auto boundaries = building->getBoundaries();
-
-                        std::vector<std::shared_ptr<SemantisedTriangleMesh::Point> > boundary1(boundaries[0].begin(), boundaries[0].end());
-                        std::vector<std::shared_ptr<SemantisedTriangleMesh::Point> > boundary2(list[0].begin(), list[0].end());
-                        if(Utilities::isPolygonInsidePolygon(boundary1, boundary2))
-                        {
-                            contained = true;
-                            for(uint j = 1; j < list.size(); j++)
-                            {
-
-                                std::vector<std::shared_ptr<SemantisedTriangleMesh::Point> > boundary3(list[j].begin(), list[j].end());
-
-                                if(Utilities::isPolygonInsidePolygon(boundary1, boundary3))
-                                {
-                                    contained = false;
-                                    break;
-                                }
-                            }
-                            if(!contained)
-                                return false;
-                        }
-
-                        return contained;
-                    });
-                if(containedIt == triangulationHoles.end())
-                {
-                    triangulationHoles.push_back(building->getBoundaries());
-                } else
-                {
-                    it = buildings.erase(it);
-                }
-            }
-        }
 
         removeAlreadyExistingPoints(triangulationHoles, arcsPoints);
 
+        //Each street arc must be in the final triangulation
         constraints.insert(constraints.end(), arcsPoints.begin(), arcsPoints.end());
-        VertexList constraintVertices = createLiDARDTMVertices(/*triangulationHoles, arcsPoints/*city_size, *origin*/);
+        //Each LiDAR point is should be inserted in the final triangulation
+        VertexList constraintVertices = createLiDARDTMVertices();
 
         meshes[0]->triangulate(triangulationHoles, arcsPoints, constraintVertices);
-        for(uint i = 0; i < keptClippings.size(); i++)
-        {
-            uint numberOfNewLines = keptClippings.at(i).second - keptClippings.at(i).first;
-            for(uint j = 0; j < numberOfNewLines; j++)
-            {
-                VertexList prevLine = arcsPoints.at(keptClippings.at(i).first);
-                VertexList clipping = arcsPoints.at(keptClippings.at(i).first + j + 1);
-                if(clipping.at(0)->getId().compare(clipping.at(1)->getId()) == 0)
-                    clipping.erase(clipping.begin());
-                if(prevLine.at(prevLine.size() - 2)->getId().compare(prevLine.at(prevLine.size() - 1)->getId()) == 0)
-                    arcsPoints.at(keptClippings.at(i).first).pop_back();
-                arcsPoints.at(keptClippings.at(i).first).insert(arcsPoints.at(keptClippings.at(i).first).end(), clipping.begin(), clipping.end());
-            }
-            arcsPoints.erase(arcsPoints.begin() + keptClippings.at(i).first + 1, arcsPoints.begin() + keptClippings.at(i).second + 1);
-            for(uint j = i + 1; j < keptClippings.size(); j++)
-            {
-                keptClippings.at(j).first -= numberOfNewLines;
-                keptClippings.at(j).second -= numberOfNewLines;
-            }
-        }
+
+        //Removed clippings needs to be removed
+        reInsertStreetsClippings(keptClippings, arcsPoints);
 
         std::cout << "Ended" << std::endl;
 
         uint buildingPos = 0;
+        std::cout << "Starting buildings' triangulation" << std::endl << "0%";
 
-        std::cout << "Starting buildings' triangulation" << std::endl <<  "0%";
-
-        pointVec points_vector;
-        for(uint i = 0; i < meshes[0]->getVerticesNumber(); i++)
-        {
-           auto v = meshes[0]->getVertex(i);
-           auto p = {v->getX(), v->getY(), 0.0};
-           points_vector.push_back(p);
-
-        }
-        std::shared_ptr<KDTree> meshKDTree = std::make_shared<KDTree>(points_vector);
 
         for(uint i = 1; i < triangulationHoles.size(); i++)
         {
@@ -1809,23 +1611,6 @@ int CityGMLCore::buildLevel0()
 
             std::map<std::string, std::vector<std::shared_ptr<Edge> > > verticesEdges;
             uint reached_id = 0;
-            std::vector<uint> flaggedMeshVertices;
-
-            for(uint j = 0; j < triangulationHoles.at(i).size(); j++)
-                for(uint k = 1; k < triangulationHoles.at(i).at(j).size(); k++)
-                {
-                    auto v1 = triangulationHoles.at(i).at(j).at(k - 1);
-                    auto v2 = triangulationHoles.at(i).at(j).at(k);
-                    auto p = ((*v1) + (*v2)) / 2;
-                    auto point = {p.getX(), p.getY(), 0.0};
-                    auto neighbourhood = meshKDTree->neighborhood(point, (*v2 - *v1).norm() / 2 + SemantisedTriangleMesh::Point::EPSILON);
-                    for(auto pi : neighbourhood)
-                    {
-                        meshes[0]->getVertex(pi.second)->addFlag(FlagType::INSIDE);
-                        flaggedMeshVertices.push_back(pi.second);
-                    }
-
-                }
 
             std::vector<std::shared_ptr<Building> > buildingsToBeTriangulated;
             if(i < groups.size() + 1)
@@ -1839,7 +1624,7 @@ int CityGMLCore::buildLevel0()
                     auto v2 = triangulationHoles.at(i).at(0).at(j);
                     for(uint k = 0; k < buildingsToBeTriangulated.size(); k++)
                     {
-                        auto boundaries = buildingsToBeTriangulated.at(k)->getBoundaries();
+                        auto boundaries = buildingsToBeTriangulated.at(k)->getOutlines();
                         auto it2 = std::find_if(boundaries.at(0).begin(), boundaries.at(0).end(), [v2](std::shared_ptr<Vertex> v)
                         {
                             return *v == *v2;
@@ -1852,109 +1637,15 @@ int CityGMLCore::buildLevel0()
                             });
                             if(it1 != boundaries.at(0).end())
                             {
-                                uint buildingBegin = it1 - boundaries.at(0).begin();
-                                uint buildingEnd = it2 - boundaries.at(0).end();
+
                                 if(v1 == nullptr || v2 == nullptr ||
                                    v1->getId().compare("") == 0 || v1->getE0() == nullptr ||
                                    v2->getId().compare("") == 0 || v2->getE0() == nullptr)
                                 {
-                                    uint counter = 0;
-                                    std::cout << "Non va bene!" << std::endl;
-                                    for(auto vertexList : triangulationHoles.at(i))
-                                    {
-                                        std::cout << "TH" << counter << "=[" << std::endl;
-                                        for(auto v : vertexList)
-                                        {
-                                            std::static_pointer_cast<SemantisedTriangleMesh::Point>(v)->print(std::cout, BracketsType::NONE, " ");
-                                        }
-                                        std::cout << "];" << std::endl;
-                                        std::cout << "plot(TH" << counter << "(:,1), TH" << counter << "(:,2));" << std::endl;
-                                        std::cout << "labels=num2cell(0:length(TH" << counter << ")-1);" << std::endl;
-                                        std::cout << "text(TH" << counter << "(:,1), TH" << counter++ << "(:,2), labels);" << std::endl << std::endl;
-                                    }
-                                    counter = 0;
-
-                                    for(auto boundary : boundaries)
-                                    {
-                                        std::cout << "B" << counter << "=[" << std::endl;
-                                        for(auto v : boundary)
-                                        {
-                                            std::static_pointer_cast<SemantisedTriangleMesh::Point>(v)->print(std::cout, BracketsType::NONE, " ");
-                                        }
-                                        std::cout << "];" << std::endl;
-                                        std::cout << "plot(B" << counter << "(:,1), B" << counter << "(:,2));" << std::endl;
-                                        std::cout << "labels=num2cell(0:length(B" << counter << ")-1);" << std::endl;
-                                        std::cout << "text(B" << counter << "(:,1), B" << counter++ << "(:,2), labels);" << std::endl << std::endl;
-                                    }
-                                    std::cout << std::endl << std::flush;
+                                    std::cerr << "For some reason, some vertices aren't initialized" << std::endl;
+                                    exit(-std::numeric_limits<int>::max());
                                 }
-
-                                /****************LA SEGUENTE E' UNA DELLE PEGGIORI SCHIFEZZE CHE ABBIA MAI FATTO, DA RIMUOVERE ASSOLUTAMENTE*******************************/
-
-                                std::vector<std::shared_ptr<Vertex> > shortestPath;
-                                std::vector<std::shared_ptr<Vertex> > shortestPath1 = Utilities::polylineDijkstra(v1, v2, true);
-                                double dist1 = std::numeric_limits<double>::max(), dist2 = std::numeric_limits<double>::max();
-                                if(shortestPath1.size() > 0)
-                                {
-                                    dist1 = ((*shortestPath1[0]) - (*v1)).norm();
-                                    for(uint l = 1; l < shortestPath1.size(); l++)
-                                       dist1 += ((*shortestPath1[l]) - (*shortestPath1[l - 1])).norm();
-                                }
-                                if(dist1 > 2  * (*v1 - *v2).norm())
-                                {
-                                    std::vector<std::shared_ptr<Vertex> > shortestPath2 = Utilities::polylineDijkstra(v2, v1, true);
-                                    if(shortestPath2.size() > 0)
-                                    {
-                                        shortestPath2.erase(shortestPath2.begin() + shortestPath2.size() - 1);
-                                        std::reverse(shortestPath2.begin(), shortestPath2.end());
-                                        shortestPath2.insert(shortestPath2.end(), v2);
-                                        dist2 = ((*shortestPath2[0]) - (*v1)).norm();
-                                        for(uint l = 1; l < shortestPath2.size(); l++)
-                                           dist2 += ((*shortestPath2[l]) - (*shortestPath2[l - 1])).norm();
-                                    }
-                                    if(dist1 == std::numeric_limits<double>::max() && dist2 == std::numeric_limits<double>::max())
-                                    {
-                                        std::cerr << "IMPOSSIBLE CASE" << std::endl;
-                                        meshes[0]->save("witherror.ply", 15);
-
-                                        uint counter = 0;
-                                        for(auto vertexList : triangulationHoles.at(i))
-                                        {
-                                            std::cout << "TH" << counter << "=[" << std::endl;
-                                            for(auto v : vertexList)
-                                            {
-                                                std::static_pointer_cast<SemantisedTriangleMesh::Point>(v)->print(std::cout, BracketsType::NONE, " ");
-                                            }
-                                            std::cout << "];" << std::endl;
-                                            std::cout << "plot(TH" << counter << "(:,1), TH" << counter << "(:,2));" << std::endl;
-                                            std::cout << "labels=num2cell(0:length(TH" << counter << ")-1);" << std::endl;
-                                            std::cout << "text(TH" << counter << "(:,1), TH" << counter++ << "(:,2), labels);" << std::endl << std::endl;
-                                        }
-                                        std::vector<std::shared_ptr<Vertex> > groupInnerVertices;
-
-                                        counter = 0;
-                                        for(auto building : buildingsToBeTriangulated)
-                                        {
-                                            auto boundaries = building->getBoundaries();
-                                            for(auto boundary : boundaries)
-                                            {
-                                                std::cout << "B" << counter << "=[" << std::endl;
-                                                for(auto v : boundary)
-                                                {
-                                                    std::static_pointer_cast<SemantisedTriangleMesh::Point>(v)->print(std::cout, BracketsType::NONE, " ");
-                                                }
-                                                std::cout << "];" << std::endl;
-                                                std::cout << "plot(B" << counter << "(:,1), B" << counter << "(:,2));" << std::endl;
-                                                std::cout << "labels=num2cell(0:length(B" << counter << ")-1);" << std::endl;
-                                                std::cout << "text(B" << counter << "(:,1), B" << counter++ << "(:,2), labels);" << std::endl << std::endl;
-                                            }
-                                        }
-                                        exit(223);
-                                    }
-                                    shortestPath = dist1 < dist2 ? shortestPath1 : shortestPath2;
-                                } else
-                                    shortestPath = shortestPath1;
-
+                                std::vector<std::shared_ptr<Vertex> > shortestPath = this->meshes[0]->computeShortestPath(v1,v2, DistanceType::EUCLIDEAN_DISTANCE, true, true);
 
                                 if(shortestPath.size() > 1)
                                 {
@@ -1966,7 +1657,7 @@ int CityGMLCore::buildLevel0()
                                     }
 
                                     boundaries[0].insert(it2, shortestPath.begin(), shortestPath.end());
-                                    buildingsToBeTriangulated.at(k)->setBoundaries(boundaries);
+                                    buildingsToBeTriangulated.at(k)->setOutlines(boundaries);
                                     triangulationHoles.at(i).at(0).insert(triangulationHoles.at(i).at(0).begin() + j,
                                                                            shortestPath.begin(), shortestPath.end());
                                     j += shortestPath.size();
@@ -1986,7 +1677,7 @@ int CityGMLCore::buildLevel0()
                     //Probabilemnte posso fare il check solo sul primo vertice
                     for(; buildingPos < buildingsToBeTriangulated.size(); buildingPos++)
                     {
-                        auto boundaries = buildingsToBeTriangulated.at(buildingPos)->getBoundaries();
+                        auto boundaries = buildingsToBeTriangulated.at(buildingPos)->getOutlines();
                         boundaryPos = 1;
                         for(; boundaryPos < boundaries.size(); boundaryPos++)
                         {
@@ -2011,80 +1702,17 @@ int CityGMLCore::buildLevel0()
                     {
                         auto v1 = triangulationHoles.at(i).at(j).at(k - 1);
                         auto v2 = triangulationHoles.at(i).at(j).at(k);
-                        std::vector<std::shared_ptr<Vertex> > shortestPath;
-                        std::vector<std::shared_ptr<Vertex> > shortestPath1 = Utilities::polylineDijkstra(v1, v2, true);
-                        double dist1 = std::numeric_limits<double>::max(), dist2 = std::numeric_limits<double>::max();
-                        if(shortestPath1.size() > 0)
-                        {
-                            dist1 = ((*shortestPath1[0]) - (*v1)).norm();
-                            for(uint l = 1; l < shortestPath1.size(); l++)
-                               dist1 += ((*shortestPath1[l]) - (*shortestPath1[l - 1])).norm();
-                        }
-                        if(dist1 > 2  * (*v1 - *v2).norm())
-                        {
-                            std::vector<std::shared_ptr<Vertex> > shortestPath2 = Utilities::polylineDijkstra(v2, v1, true);
-                            if(shortestPath2.size() > 0)
-                            {
-                                shortestPath2.erase(shortestPath2.begin() + shortestPath2.size() - 1);
-                                std::reverse(shortestPath2.begin(), shortestPath2.end());
-                                shortestPath2.insert(shortestPath2.end(), v2);
-                                dist2 = ((*shortestPath2[0]) - (*v1)).norm();
-                                for(uint l = 1; l < shortestPath2.size(); l++)
-                                   dist2 += ((*shortestPath2[l]) - (*shortestPath2[l - 1])).norm();
-                            }
-                            if(dist1 == std::numeric_limits<double>::max() && dist2 == std::numeric_limits<double>::max())
-                            {
-                                std::cerr << "IMPOSSIBLE CASE" << std::endl;
-                                meshes[0]->save("witherror.ply", 15);
-
-                                uint counter = 0;
-                                for(auto vertexList : triangulationHoles.at(i))
-                                {
-                                    std::cout << "TH" << counter << "=[" << std::endl;
-                                    for(auto v : vertexList)
-                                    {
-                                        std::static_pointer_cast<SemantisedTriangleMesh::Point>(v)->print(std::cout, BracketsType::NONE, " ");
-                                    }
-                                    std::cout << "];" << std::endl;
-                                    std::cout << "plot(TH" << counter << "(:,1), TH" << counter << "(:,2));" << std::endl;
-                                    std::cout << "labels=num2cell(0:length(TH" << counter << ")-1);" << std::endl;
-                                    std::cout << "text(TH" << counter << "(:,1), TH" << counter++ << "(:,2), labels);" << std::endl << std::endl;
-                                }
-                                std::vector<std::shared_ptr<Vertex> > groupInnerVertices;
-
-                                counter = 0;
-                                for(auto building : buildingsToBeTriangulated)
-                                {
-                                    auto boundaries = building->getBoundaries();
-                                    for(auto boundary : boundaries)
-                                    {
-                                        std::cout << "B" << counter << "=[" << std::endl;
-                                        for(auto v : boundary)
-                                        {
-                                            std::static_pointer_cast<SemantisedTriangleMesh::Point>(v)->print(std::cout, BracketsType::NONE, " ");
-                                        }
-                                        std::cout << "];" << std::endl;
-                                        std::cout << "plot(B" << counter << "(:,1), B" << counter << "(:,2));" << std::endl;
-                                        std::cout << "labels=num2cell(0:length(B" << counter << ")-1);" << std::endl;
-                                        std::cout << "text(B" << counter << "(:,1), B" << counter++ << "(:,2), labels);" << std::endl << std::endl;
-                                    }
-                                }
-                                exit(223);
-                            }
-                            shortestPath = dist1 < dist2 ? shortestPath1 : shortestPath2;
-                        } else
-                            shortestPath = shortestPath1;
-
+                        std::vector<std::shared_ptr<Vertex> > shortestPath = this->meshes[0]->computeShortestPath(v1, v2, DistanceType::EUCLIDEAN_DISTANCE, true, true);
 
                         if(shortestPath.size() > 1)
                         {
                             shortestPath.pop_back();
                             triangulationHoles.at(i).at(j).insert(triangulationHoles.at(i).at(j).begin() + k,
                                                                    shortestPath.begin(), shortestPath.end());
-                            auto boundaries = buildingsToBeTriangulated.at(buildingPos)->getBoundaries();
+                            auto boundaries = buildingsToBeTriangulated.at(buildingPos)->getOutlines();
                             boundaries.at(boundaryPos).insert(boundaries.at(boundaryPos).begin() + k,
                                                                    shortestPath.begin(), shortestPath.end());
-                            buildingsToBeTriangulated.at(buildingPos)->setBoundaries(boundaries);
+                            buildingsToBeTriangulated.at(buildingPos)->setOutlines(boundaries);
                             k += shortestPath.size();
                         }
 
@@ -2098,7 +1726,7 @@ int CityGMLCore::buildLevel0()
                                 }) != usedBuildings.end())
                     buildingPos++;
 
-                auto boundaries = buildings.at(buildingPos)->getBoundaries();
+                auto boundaries = buildings.at(buildingPos)->getOutlines();
 
                 for(uint j = 0; j < boundaries.size(); j++)
                 {
@@ -2111,6 +1739,21 @@ int CityGMLCore::buildLevel0()
                            v1->getId().compare("") == 0 || v1->getE0() == nullptr ||
                            v2->getId().compare("") == 0 || v2->getE0() == nullptr)
                         {
+                            if(v1 != nullptr && v2 != nullptr)
+                            {
+                                if(v1->getInfo() != nullptr)
+                                {
+                                    Node* n = static_cast<Node*>(v1->getInfo());
+                                    n->print(std::cout);
+                                }
+
+                                if(v2->getInfo() != nullptr)
+                                {
+                                    Node* n = static_cast<Node*>(v2->getInfo());
+                                    n->print(std::cout);
+                                }
+                            }
+
                             std::cout << "Disconnected vertex!" << std::endl;
                             v1->print(std::cerr);
                             v2->print(std::cerr);
@@ -2132,56 +1775,7 @@ int CityGMLCore::buildLevel0()
                             exit(88);
                         }
                         /****************LA SEGUENTE E' UNA DELLE PEGGIORI SCHIFEZZE CHE ABBIA MAI FATTO, DA RIMUOVERE ASSOLUTAMENTE*******************************/
-                        std::vector<std::shared_ptr<Vertex> > shortestPath;
-                        std::vector<std::shared_ptr<Vertex> > shortestPath1 = Utilities::polylineDijkstra(v1, v2);
-                        double dist1 = std::numeric_limits<double>::max(), dist2 = std::numeric_limits<double>::max();
-                        if(shortestPath1.size() > 0)
-                        {
-                            dist1 = ((*shortestPath1[0]) - (*v1)).norm();
-                            for(uint l = 1; l < shortestPath1.size(); l++)
-                               dist1 += ((*shortestPath1[l]) - (*shortestPath1[l - 1])).norm();
-                        }
-
-                        if(dist1 > 2 * (*v1 - *v2).norm())
-                        {
-                            std::vector<std::shared_ptr<Vertex> > shortestPath2 = Utilities::polylineDijkstra(v2, v1);
-                            if(shortestPath2.size() > 0)
-                            {
-                                shortestPath2.erase(shortestPath2.begin() + shortestPath2.size() - 1);
-                                std::reverse(shortestPath2.begin(), shortestPath2.end());
-                                shortestPath2.insert(shortestPath2.end(), v2);
-                                dist2 = ((*shortestPath2[0]) - (*v1)).norm();
-                                for(uint l = 1; l < shortestPath2.size(); l++)
-                                   dist2 += ((*shortestPath2[l]) - (*shortestPath2[l - 1])).norm();
-                            }
-                            if(dist1 == std::numeric_limits<double>::max() && dist2 == std::numeric_limits<double>::max())
-                            {
-                                std::cerr << "IMPOSSIBLE CASE" << std::endl;
-                                meshes[0]->save("witherror.ply", 15);
-
-                                uint counter = 0;
-                                for(auto vertexList : triangulationHoles.at(i))
-                                {
-                                    std::cout << "TH" << counter << "=[" << std::endl;
-                                    for(auto v : vertexList)
-                                    {
-                                        std::static_pointer_cast<SemantisedTriangleMesh::Point>(v)->print(std::cout, BracketsType::NONE, " ");
-                                    }
-                                    std::cout << "];" << std::endl;
-                                    std::cout << "plot(TH" << counter << "(:,1), TH" << counter << "(:,2));" << std::endl;
-                                    std::cout << "labels=num2cell(0:length(TH" << counter << ")-1);" << std::endl;
-                                    std::cout << "text(TH" << counter << "(:,1), TH" << counter++ << "(:,2), labels);" << std::endl << std::endl;
-                                }
-                                std::vector<std::shared_ptr<Vertex> > groupInnerVertices;
-
-                                std::cout << std::flush;
-                                exit(223);
-                            }
-
-                            shortestPath = dist1 < dist2 ? shortestPath1 : shortestPath2;
-                        } else
-                            shortestPath = shortestPath1;
-
+                        std::vector<std::shared_ptr<Vertex> > shortestPath = this->meshes[0]->computeShortestPath(v1, v2, DistanceType::EUCLIDEAN_DISTANCE, true, true);
                         if(shortestPath.size() > 1)
                         {
                             shortestPath.pop_back();
@@ -2196,7 +1790,7 @@ int CityGMLCore::buildLevel0()
                         }
                     }
                 }
-                buildings.at(buildingPos)->setBoundaries(boundaries);
+                buildings.at(buildingPos)->setOutlines(boundaries);
 
                 buildingsToBeTriangulated = {buildings.at(buildingPos)};
                 buildingPos++;
@@ -2208,7 +1802,7 @@ int CityGMLCore::buildLevel0()
             for(auto building : buildingsToBeTriangulated)
             {
                 std::vector<uint> polyline;
-                auto boundaries = building->getBoundaries();
+                auto boundaries = building->getOutlines();
 
                 for(uint j = 0; j < boundaries.size(); j++)
                 {
@@ -2231,6 +1825,7 @@ int CityGMLCore::buildLevel0()
                                 v = pointsToVertices.at(pit - points.begin());
                                 boundaries.at(j).at(k) = v;
                             }
+
                             if(v->getId().compare("") == 0)
                             {
                                 v = meshes[0]->addNewVertex(v->getX(), v->getY(), v->getZ());
@@ -2280,9 +1875,9 @@ int CityGMLCore::buildLevel0()
                     }
                 }
 
-                building->setBoundaries(boundaries);
+                building->setOutlines(boundaries);/*
                 for(auto pi : flaggedMeshVertices)
-                    meshes[0]->getVertex(pi)->removeFlag(FlagType::INSIDE);
+                    meshes[0]->getVertex(pi)->removeFlag(FlagType::INSIDE);*/
 
                 w++;
 
@@ -2415,7 +2010,7 @@ int CityGMLCore::buildLevel0()
                     for(auto building : buildingsToBeTriangulated)
                     {
                         std::cerr <<"%New building" << std::endl;
-                        auto boundaries = building->getBoundaries();
+                        auto boundaries = building->getOutlines();
                         for(auto boundary : boundaries)
                         {
                             std::cerr << "B" << counter << "=[" << std::endl;
@@ -2481,7 +2076,7 @@ int CityGMLCore::buildLevel0()
                     for(auto building : buildingsToBeTriangulated)
                     {
                         std::cerr <<"%New building" << std::endl;
-                        auto boundaries = building->getBoundaries();
+                        auto boundaries = building->getOutlines();
                         for(auto boundary : boundaries)
                         {
                             std::cerr << "B" << counter << "=[" << std::endl;
@@ -2510,13 +2105,13 @@ int CityGMLCore::buildLevel0()
                     }
 
 
-                    std::cout << "Structure" << std::endl;
-                    for_each(points.begin(), points.end(), [](double* p) { std::cout << p[0] << " " << p[1] << std::endl;});
-                    for_each(enclosing_triangles.begin(), enclosing_triangles.end(), [](uint id) { std::cout << id << std::endl;});
-                    std::cout << "Triangle:" << std::endl;
-                    std::cout << points[enclosing_triangles[j * 3]][0] << " " << points[enclosing_triangles[j * 3]][1] << std::endl;
-                    std::cout << points[enclosing_triangles[j * 3 + 1]][0] << " " << points[enclosing_triangles[j * 3 + 1]][1] << std::endl;
-                    std::cout << points[enclosing_triangles[j * 3 + 2]][0] << " " << points[enclosing_triangles[j * 3 + 2]][1] << std::endl;
+                    std::cerr << "Structure" << std::endl;
+                    for_each(points.begin(), points.end(), [](double* p) { std::cerr << p[0] << " " << p[1] << std::endl;});
+                    for_each(enclosing_triangles.begin(), enclosing_triangles.end(), [](uint id) { std::cerr << id << std::endl;});
+                    std::cerr << "Triangle:" << std::endl;
+                    std::cerr << points[enclosing_triangles[j * 3]][0] << " " << points[enclosing_triangles[j * 3]][1] << std::endl;
+                    std::cerr << points[enclosing_triangles[j * 3 + 1]][0] << " " << points[enclosing_triangles[j * 3 + 1]][1] << std::endl;
+                    std::cerr << points[enclosing_triangles[j * 3 + 2]][0] << " " << points[enclosing_triangles[j * 3 + 2]][1] << std::endl;
                     exit(123);
                 }
 
@@ -2545,7 +2140,7 @@ int CityGMLCore::buildLevel0()
                     for(auto building : buildingsToBeTriangulated)
                     {
                         std::cerr <<"%New building" << std::endl;
-                        auto boundaries = building->getBoundaries();
+                        auto boundaries = building->getOutlines();
                         for(auto boundary : boundaries)
                         {
                             std::cerr << "B" << counter << "=[" << std::endl;
@@ -2587,14 +2182,6 @@ int CityGMLCore::buildLevel0()
         }
 
 
-        points_vector.clear();
-        meshKDTree.reset();
-//        for(auto p : nodes)
-//        {
-//            *p.second->getCoordinates() *= city_size;
-//            *p.second->getCoordinates() += *origin;
-//        }
-
         for(uint i = 0; i < meshes[0]->getVerticesNumber(); i++)
         {
             std::shared_ptr<Vertex> v = meshes[0]->getVertex(i);
@@ -2602,20 +2189,15 @@ int CityGMLCore::buildLevel0()
             v->setY(v->getY() * city_size + origin->getY());
             v->setZ(v->getZ() * city_size + origin->getZ());
         }
-
-        //pixelToBuildingAssociation = extractBuildingsHeights(true);
-        //auto buildingsHeights = extractBuildingsHeightsFromLidar();
         std::cout << "Ended" << std::endl << "Adapting elevations to DTM" << std::endl;
-        //Utilities::associateHeights(meshes[0].get(), dtm.get(), 1, Point(0,0,0));
 
         origin.reset();
 
         std::cout << "Ended" << std::endl << "Associating elevations" << std::endl;
-        //associateElevations(triangulationHoles, arcsPoints);
 
         for(auto building : buildings)
         {
-            auto boundaries = building->getBoundaries();
+            auto boundaries = building->getOutlines();
             for(auto boundary : boundaries)
                 for(auto v : boundary)
                     v->addFlag(FlagType::ON_BOUNDARY);
@@ -2625,7 +2207,7 @@ int CityGMLCore::buildLevel0()
         std::cout << "0%";
         for(auto building : buildings)
         {
-            auto boundaries = building->getBoundaries();
+            auto boundaries = building->getOutlines();
             for(auto boundary : boundaries)
             {
                 for(uint i = 1; i < boundary.size(); i++)
@@ -2670,7 +2252,7 @@ int CityGMLCore::buildLevel0()
         }
         for(auto building : buildings)
         {
-            auto boundaries = building->getBoundaries();
+            auto boundaries = building->getOutlines();
             for(auto boundary : boundaries)
                 for(auto v : boundary)
                     v->removeFlag(FlagType::ON_BOUNDARY);
@@ -2706,47 +2288,14 @@ int CityGMLCore::buildLevel0()
         }
 
         std::cout << "Associating heights to buildings." << std::endl;
-        float** elevations = dtm->GetRasterBand(1);
-
         for(uint i = 0; i < buildings.size(); i++)
         {
             int row_min = -1, col_min = -1, row_max = 0, col_max = 0;
             double elevation_min = std::numeric_limits<double>::max(),
                    elevation_max = -std::numeric_limits<double>::max(),
                    elevation_mean = 0;
-            //Computing min-max-mean height values
-//            for(uint k = 0; k < pixelToBuildingAssociation.at(i).size(); k++)
-//            {
 
-//                elevation_mean += static_cast<double>(elevations[pixelToBuildingAssociation.at(i)[k].first][pixelToBuildingAssociation.at(i)[k].second]);
-//                if(elevation_min > static_cast<double>(elevations[pixelToBuildingAssociation.at(i)[k].first][pixelToBuildingAssociation.at(i)[k].second]))
-//                {
-//                    row_min = static_cast<int>(pixelToBuildingAssociation.at(i)[k].first);
-//                    col_min = static_cast<int>(pixelToBuildingAssociation.at(i)[k].second);
-//                    elevation_min = static_cast<double>(elevations[pixelToBuildingAssociation.at(i)[k].first][pixelToBuildingAssociation.at(i)[k].second]);
-//                }
-
-//                if(elevation_max < static_cast<double>(elevations[pixelToBuildingAssociation.at(i)[k].first][pixelToBuildingAssociation.at(i)[k].second]))
-//                {
-//                    row_max = static_cast<int>(pixelToBuildingAssociation.at(i)[k].first);
-//                    col_max = static_cast<int>(pixelToBuildingAssociation.at(i)[k].second);
-//                    elevation_max = static_cast<double>(elevations[pixelToBuildingAssociation.at(i)[k].first][pixelToBuildingAssociation.at(i)[k].second]);
-//                }
-
-//            }
-
-//            elevation_mean /= static_cast<double>(pixelToBuildingAssociation.at(i).size());
-
-//            std::for_each(buildingsHeights.at(i).begin(), buildingsHeights.at(i).end(), [&elevation_mean, &elevation_min, &elevation_max](double d){
-//                elevation_mean += d;
-//                if(elevation_min > d)
-//                    elevation_min = d;
-//                if(elevation_max < d)
-//                    elevation_max = d;
-//            });
-//            elevation_mean /= buildingsHeights.at(i).size();
-
-            auto boundaries = buildings.at(i)->getBoundaries();
+            auto boundaries = buildings.at(i)->getOutlines();
             uint boundariesPointsNumber = 0;
             for(uint j = 0; j < boundaries.size(); j++)
             {
@@ -2764,119 +2313,27 @@ int CityGMLCore::buildLevel0()
 
             elevation_mean /= boundariesPointsNumber;
 
-            boundaries = buildings.at(i)->getBoundaries();
+            boundaries = buildings.at(i)->getOutlines();
             for(uint j = 0; j < boundaries.size(); j++)
                 for(uint k = 0; k < boundaries.at(j).size() - 1; k++)
                     boundaries.at(j).at(k)->setZ(elevation_mean);
         }
         std::cout <<"Ended!" << std::endl;
 
-        /*std::cout << "Reconstructing streets' arcs" << std::endl;
-
-        for(uint i = 0; i < buildings.size(); i++)
-        {
-            auto boundaries = buildings[i]->getBoundaries();
-            for(uint j = 0; j < boundaries.size(); j++)
-                for(uint k = 0; k < boundaries.at(j).size() - 1; k++)
-                    boundaries.at(j).at(k)->addFlag(FlagType::ON_BOUNDARY);
-        }
-
-        for(uint i = 0; i < arcsPoints.size(); i++)
-        {
-            for(uint j = 1; j < arcsPoints.at(i).size(); j++)
-            {
-                auto v1 = arcsPoints.at(i).at(j - 1);
-                auto v2 = arcsPoints.at(i).at(j);
-                if(v1->searchFlag(FlagType::ON_BOUNDARY) < 0 && v2->searchFlag(FlagType::ON_BOUNDARY) < 0 )
-                {
-                    std::vector<std::shared_ptr<Vertex> > shortestPath1 = Utilities::dijkstra(v1, v2);
-                    std::vector<std::shared_ptr<Vertex> > shortestPath2 = Utilities::dijkstra(v2, v1);
-                    double dist1 = std::numeric_limits<double>::max(), dist2 = std::numeric_limits<double>::max();
-                    if(shortestPath1.size() > 0)
-                    {
-                        dist1 = ((*shortestPath1[0]) - (*v1)).norm();
-                        for(uint l = 1; l < shortestPath1.size(); l++)
-                           dist1 += ((*shortestPath1[l]) - (*shortestPath1[l - 1])).norm();
-                    }
-
-                    if(shortestPath2.size() > 0)
-                    {
-                        shortestPath2.erase(shortestPath2.begin() + shortestPath2.size() - 1);
-                        std::reverse(shortestPath2.begin(), shortestPath2.end());
-                        shortestPath2.insert(shortestPath2.end(), v2);
-                        dist2 = ((*shortestPath2[0]) - (*v1)).norm();
-                        for(uint l = 1; l < shortestPath2.size(); l++)
-                           dist2 += ((*shortestPath2[l]) - (*shortestPath2[l - 1])).norm();
-                    }
-                    if(dist1 == std::numeric_limits<double>::max() && dist2 == std::numeric_limits<double>::max())
-                    {
-                        std::cerr << "IMPOSSIBLE CASE" << std::endl;
-                        meshes[0]->save("witherror.ply", 15);
-
-                        std::cout << i << " " << j << std::endl;
-
-                        std::cout << "A=[" << std::endl;
-                        for(auto v : arcsPoints.at(i))
-                        {
-                            std::static_pointer_cast<Point>(v)->print(std::cout, BracketsType::NONE, " ");
-                        }
-                        std::cout << "];" << std::endl;
-
-                        exit(223);
-                    }
-
-                    std::vector<std::shared_ptr<Vertex> > shortestPath = dist1 < dist2 ? shortestPath1 : shortestPath2;
-
-                    if(shortestPath.size() > 1)
-                    {
-                        shortestPath.pop_back();
-                        arcsPoints.at(i).insert(arcsPoints.at(i).begin() + j, shortestPath.begin(), shortestPath.end());
-                        j += shortestPath.size();
-                    }
-                }
-            }
-        }
-
-        for(uint i = 0; i < buildings.size(); i++)
-        {
-            auto boundaries = buildings[i]->getBoundaries();
-            for(uint j = 0; j < boundaries.size(); j++)
-                for(uint k = 0; k < boundaries.at(j).size() - 1; k++)
-                    boundaries.at(j).at(k)->removeFlag(FlagType::ON_BOUNDARY);
-        }
-
-
-        std::cout << "Ended!" << std::endl;*/
 
         std::cout <<"Creating annotations." << std::endl;
         unsigned char building_color[] = {255, 215, 0};
-
         unsigned char street_color[] = {0, 0, 0};
-//        unsigned char green[] = {0, 255, 0};
-//        unsigned char yellowgreen[] = {210,255,105};
-//        unsigned char yellow[] = {255,255,0};
-//        unsigned char orange[] = {255,131,0};
-//        unsigned char salmon[] = {255,160,122};
-//        unsigned char red[] = {255, 0, 0};
-//        unsigned char violet[] = {155,38,182};
+
         std::map<Node*, std::shared_ptr<Vertex> > traversed_nodes;
 
-        for(uint i = 0; i < meshes[0]->getVerticesNumber(); i++)
-        {
-           auto v = meshes[0]->getVertex(i);
-           auto p = {v->getX(), v->getY(), 0.0};
-           points_vector.push_back(p);
-
-        }
-        meshKDTree = std::make_shared<KDTree>(points_vector);
         uint i = 0;
         for(auto ait = streetsArcs.begin(); ait != streetsArcs.end(); ait++)
         {
             std::shared_ptr<LineAnnotation> annotation = std::make_shared<LineAnnotation>();
             std::vector<std::shared_ptr<Vertex> > annotationPolyline;
-            annotation->setId(i);
+            annotation->setId(std::to_string(i));
             annotation->setTag("street n° " + std::to_string(i));
-            annotation->setHierarchyLevel(0);
             annotation->setColor(street_color);
             std::vector<uint> flaggedMeshVertices;
             double epsilon = 1e-5;
@@ -2888,11 +2345,11 @@ int CityGMLCore::buildLevel0()
 
                 auto p = ((*v1) + (*v2)) / 2;
                 auto point = {p.getX(), p.getY(), 0.0};
-                auto neighbourhood = meshKDTree->neighborhood(point, (*v2 - *v1).norm() / 2 + SemantisedTriangleMesh::Point::EPSILON);
+                auto neighbourhood = meshes[0]->getNearestNeighbours(p, (*v2 - *v1).norm() / 2 + SemantisedTriangleMesh::Point::EPSILON);
                 for(auto pi : neighbourhood)
                 {
-                    meshes[0]->getVertex(pi.second)->addFlag(FlagType::INSIDE);
-                    flaggedMeshVertices.push_back(pi.second);
+                    pi->addFlag(FlagType::INSIDE);
+                    flaggedMeshVertices.push_back(std::stoi(pi->getId()));
                 }
 
             }
@@ -2901,7 +2358,7 @@ int CityGMLCore::buildLevel0()
             {
                 auto v1 = arcsPoints.at(i).at(j - 1);
                 auto v2 = arcsPoints.at(i).at(j);
-                auto path = Utilities::polylineDijkstra(v1, v2, true);
+                auto path = this->meshes[0]->computeShortestPath(v1, v2, DistanceType::EUCLIDEAN_DISTANCE, true, true);
                 double dist = 0.0;
                 for(uint k = 1; k < path.size(); k++)
                     dist += (*path[k] - *path[k - 1]).norm();
@@ -2915,6 +2372,7 @@ int CityGMLCore::buildLevel0()
 
             for(auto p : flaggedMeshVertices)
                 meshes[0]->getVertex(p)->removeFlag(FlagType::INSIDE);
+
             for(uint j = 0; j < arcsPoints.at(i).size(); j++)
             {
                 std::shared_ptr<Vertex> v = std::static_pointer_cast<Vertex>(arcsPoints.at(i).at(j));
@@ -2952,9 +2410,8 @@ int CityGMLCore::buildLevel0()
         {
 
             std::shared_ptr<PointAnnotation> annotation = std::make_shared<PointAnnotation>();
-            annotation->setId(static_cast<uint>(streetsArcs.size()) - 1 + i);
+            annotation->setId(std::to_string((streetsArcs.size() - 1 + i)));
             annotation->setTag("node n° " + std::to_string(i++));
-            annotation->setHierarchyLevel(0);
             annotation->setColor(street_color);
             annotation->addPoint(it->second);
 
@@ -2969,43 +2426,36 @@ int CityGMLCore::buildLevel0()
 
         }
 
-        uint bid = static_cast<uint>(streetsArcs.size()) + traversed_nodes.size();
+        uint bid = streetsArcs.size() + traversed_nodes.size();
 
         uint counter=0;
         for(uint i = 0; i < buildings.size(); i++)
         {
-            auto boundaries = buildings[i]->getBoundaries();
+            auto boundaries = buildings[i]->getOutlines();
             std::shared_ptr<SurfaceAnnotation> annotation = std::make_shared<SurfaceAnnotation>();
-            annotation->setId(bid);
+            annotation->setId(std::to_string(bid));
             annotation->setTag("building n° " + std::to_string(bid++));
-            annotation->setHierarchyLevel(0);
             annotation->setColor(building_color);
 
             annotation->setOutlines(boundaries);
-//            for(uint j = 0; j < boundaries.size(); j++)
-//            {
-//                std::vector<std::shared_ptr<Vertex> > annotationBoundary;
-//                for(uint k = 0; k < boundaries.at(j).size(); k++)
-//                    annotationBoundary.push_back(std::static_pointer_cast<Vertex>(boundaries.at(j).at(k)));
-//                annotation->addOutline(annotationBoundary);
-//            }
 
             annotation->setMesh(meshes[0]);
             meshes[0]->addAnnotation(annotation);
             auto height = annotation->getOutlines()[0][0]->getZ();
+
             auto involved = annotation->getInvolvedVertices();
 
             for(uint j = 0; j < involved.size(); j++)
                 involved.at(j)->setZ(height);
         }
-        meshes[0]->removeIsolatedVertices();
+        //meshes[0]->removeIsolatedVertices();
         for(uint i = 0; i < meshes[0]->getVerticesNumber(); i++)
             meshes[0]->getVertex(i)->setId(std::to_string(i));
         for(uint i = 0; i < meshes[0]->getEdgesNumber(); i++)
             meshes[0]->getEdge(i)->setId(std::to_string(i));
         for(uint i = 0; i < meshes[0]->getTrianglesNumber(); i++)
             meshes[0]->getTriangle(i)->setId(std::to_string(i));
-        AnnotationFileManager manager;
+        SemantisedTriangleMesh::SemanticsFileManager manager;
         manager.setMesh(meshes[0]);
         manager.writeAnnotations("annotations.ant");
         meshes[0]->save("level0.ply", 15);
@@ -3031,7 +2481,7 @@ int CityGMLCore::buildLevel1() {
     uint counter = 0, annotationPos = 0;
     for(uint i = 0; i < buildings.size(); i++)
     {
-        auto boundaries = buildings[i]->getBoundaries();
+        auto boundaries = buildings[i]->getOutlines();
 
         //int row_min = -1, col_min = -1, row_max = 0, col_max = 0;
         double height_min = std::numeric_limits<double>::max(),
@@ -3135,6 +2585,21 @@ int CityGMLCore::buildLevel1() {
                 std::shared_ptr<Vertex> v4 = std::static_pointer_cast<Vertex>(cloned_outlines.at(j).at(pos2));
 
                 std::shared_ptr<Edge> e1 = meshes[1]->searchEdgeContainingVertex(vertices_edges.at(stoi(v1->getId())), v2);
+                if(e1 == nullptr)
+                {
+                    for(uint k = 0; k < outlines.at(j).size(); k++)
+                        std::static_pointer_cast<SemantisedTriangleMesh::Point>(outlines.at(j).at(k))->print(std::cout, BracketsType::NONE, " ");
+                    std::cout << std::endl;
+                    v1->print(std::cout);
+                    v2->print(std::cout);
+                    v3->print(std::cout);
+                    v4->print(std::cout);
+                    std::cout << std::endl;
+                    std::static_pointer_cast<SemantisedTriangleMesh::Point>(v1)->print(std::cout, BracketsType::NONE, " ");
+                    std::static_pointer_cast<SemantisedTriangleMesh::Point>(v2)->print(std::cout, BracketsType::NONE, " ");
+                    std::static_pointer_cast<SemantisedTriangleMesh::Point>(v3)->print(std::cout, BracketsType::NONE, " ");
+                    std::static_pointer_cast<SemantisedTriangleMesh::Point>(v4)->print(std::cout, BracketsType::NONE, " ");
+                }
                 std::shared_ptr<Edge> e2 = meshes[1]->addNewEdge(v2, v3);
                 e2->setId(std::to_string(meshes[1]->getEdgesNumber() - 1));
 
@@ -3364,23 +2829,26 @@ int CityGMLCore::buildLevel1() {
     meshes[1]->save("level1.ply", 15);
     std::vector<std::shared_ptr<Annotation> > buildingsAnnotations;
     uint pos = 0;
-    AnnotationFileManager manager;
+    SemanticsFileManager manager;
     manager.setMesh(meshes[1]);
     manager.writeAnnotations("AnnotationsLOD1.ant");
 
     std::vector<std::shared_ptr<Annotation> > annotations = meshes[1]->getAnnotations();
-    for(auto annotation : annotations)
+    for(uint i = 0; i < meshes[1]->getAnnotations().size(); )
     {
+        auto annotation = meshes[1]->getAnnotations().at(i);
         auto tag = annotation->getTag();
         std::transform(tag.begin(), tag.end(), tag.begin(), [](unsigned char c){return std::tolower(c); });
         if(tag.find("building") != std::string::npos)
         {
             buildingsAnnotations.push_back(annotation);
-            meshes[1]->removeAnnotation(pos);
-            pos--;
-        }
-        pos++;
+            std::cout << meshes[1]->getAnnotations().size() << std::endl;
+            meshes[1]->removeAnnotation(i);
+        } else
+            i++;
+
     }
+
     manager.writeAnnotations("streetsLOD1.ant");
     meshes[1]->setAnnotations(buildingsAnnotations);
     manager.writeAnnotations("buildingsLOD1.ant");
@@ -3393,7 +2861,7 @@ void CityGMLCore::setLevel0(std::string meshFileName, std::string annotationFile
     uint reachedId = 0;
     this->meshes[0] = std::make_shared<TriangleMesh>();
     this->meshes[0]->load(meshFileName);
-    AnnotationFileManager manager;
+    SemanticsFileManager manager;
     manager.setMesh(this->meshes[0]);
     manager.readAnnotations(annotationFileName);
 
@@ -3406,7 +2874,7 @@ void CityGMLCore::setLevel0(std::string meshFileName, std::string annotationFile
         {
             auto buildingAnnotation = std::dynamic_pointer_cast<SurfaceAnnotation>(annotation);
             auto building = std::make_shared<Building>();
-            building->setBoundaries(buildingAnnotation->getOutlines());
+            building->setOutlines(buildingAnnotation->getOutlines());
             building->setId(std::to_string(reachedId++));
             buildings.push_back(building);
         }
