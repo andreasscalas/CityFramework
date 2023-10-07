@@ -2060,7 +2060,6 @@ int CityGMLCore::buildLevel0()
     }
     std::cout <<"Ended!" << std::endl;
 
-    meshes[0]->save("cacca.ply",15);
 
     std::cout <<"Creating annotations." << std::endl;
     unsigned char building_color[] = {255, 215, 0};
@@ -2146,7 +2145,6 @@ int CityGMLCore::buildLevel0()
 
     }
 
-    meshes[0]->save("cacca2.ply", 15);
     i = 0;
     for(auto it = traversed_nodes.begin(); it != traversed_nodes.end(); it++)
     {
@@ -2167,7 +2165,6 @@ int CityGMLCore::buildLevel0()
         meshes[0]->addAnnotation(annotation);
 
     }
-    meshes[0]->save("cacca3.ply", 15);
 
     uint bid = streetsArcs.size() + traversed_nodes.size();
     uint counter=0;
@@ -2190,7 +2187,6 @@ int CityGMLCore::buildLevel0()
         for(uint j = 0; j < involved.size(); j++)
             involved.at(j)->setZ(height);
     }
-    meshes[0]->save("cacca4.ply", 15);
 
     for(uint i = 0; i < meshes[0]->getVerticesNumber(); i++)
         meshes[0]->getVertex(i)->setId(std::to_string(i));
