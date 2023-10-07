@@ -21,14 +21,14 @@ class CityGMLCore
 {
 public:
     CityGMLCore();
-    CityGMLCore(std::string, std::string, std::string);
+    CityGMLCore(const std::string&, const std::string&, const std::string&);
 
-    int buildLevel(uint level = 0);
+    int buildLevel(const uint level = 0);
 
-    int readLiDAR(std::string filename,
-                  std::vector<std::string> allowedClasses,
-                  bool checkInsideBounds,
-                  std::vector<std::vector<std::shared_ptr<SemantisedTriangleMesh::Point> > > bounds,
+    int readLiDAR(const std::string& filename,
+                  const std::vector<std::string>& allowedClasses,
+                  const bool checkInsideBounds,
+                  const std::vector<std::vector<std::shared_ptr<SemantisedTriangleMesh::Point> > > &bounds,
                   std::vector<std::pair<std::shared_ptr<SemantisedTriangleMesh::Point>, std::string> > &classifiedPoints);
 
     /**
@@ -64,7 +64,7 @@ public:
 
     std::vector<std::vector<double> > extractBuildingsHeightsFromLidar(double scale_factor = 1.0, SemantisedTriangleMesh::Point origin = SemantisedTriangleMesh::Point(0,0,0));
 
-    void associateElevations(std::vector<std::vector<VertexList> > triangulationHoles, std::vector<VertexList> streetsArcsPoints);
+    void associateElevations(const std::vector<std::vector<VertexList>> &triangulationHoles, const std::vector<VertexList> &streetsArcsPoints);
 
     //Getters and setters
     std::string getOsmFilename() const;

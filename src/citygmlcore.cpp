@@ -19,6 +19,7 @@
 #include <KDTree.hpp>
 #include <semanticsfilemanager.hpp>
 
+
 using namespace std::chrono;
 using namespace SemantisedTriangleMesh;
 using namespace OpenStreetMap;
@@ -27,7 +28,7 @@ using namespace OpenStreetMap;
 VertexList pointToVertexList(PointList points)
 {
     VertexList vertices;
-    for(auto p : points)
+    for(const auto& p : points)
         vertices.push_back(std::static_pointer_cast<Vertex>(p));
     return vertices;
 }
@@ -35,7 +36,7 @@ VertexList pointToVertexList(PointList points)
 PointList vertexToPointList(VertexList vertices)
 {
     PointList points;
-    for(auto v : vertices)
+    for(const auto &v : vertices)
         points.push_back(std::static_pointer_cast<SemantisedTriangleMesh::Point>(v));
     return points;
 }
@@ -54,15 +55,14 @@ CityGMLCore::CityGMLCore()
     osmFilename = "";
 }
 
-CityGMLCore::CityGMLCore(std::string osmFilename, std::string lidarFilename, std::string boundsFile)
+CityGMLCore::CityGMLCore(const std::string& osmFilename, const std::string& lidarFilename, const std::string& boundsFile)
 {
     this->osmFilename = osmFilename;
 
-    //int retValue = loadOSM(osmFilename, nodes, arcs, relations);
     int retValue = osm.load(osmFilename);
     if(retValue == 0)
     {
-        for(auto node : osm.getNodes())
+        for(const auto &node : osm.getNodes())
         {
             auto p = node.second->getCoordinates();
             OpenStreetMap::CoordsConverter converter(MATERA_EPSG_CODE);
@@ -79,13 +79,23 @@ CityGMLCore::CityGMLCore(std::string osmFilename, std::string lidarFilename, std
     std::cout << "Loading DTM" << std::endl;
 
     Utilities::load_shapefile_shp(boundsFile, bounds);
+    auto it = osm.getNodes().begin();
+    while(it != osm.getNodes().end())
+    {
+        auto osmPoint = it->second->getCoordinates();
+        auto p = std::make_shared<SemantisedTriangleMesh::Point>(osmPoint->x, osmPoint->y, 0);
+        if(isPointOutsideBounds(p))
+            it = osm.removeNode(it->first);
+        else
+            it++;
+    }
 
     std::vector<std::string> allowedClasses = {"ground", "building"};
     std::vector<std::pair<std::shared_ptr<SemantisedTriangleMesh::Point>, std::string> > classifiedPoints;
     int retValue_ = readLiDAR(lidarFilename, allowedClasses, true, bounds, classifiedPoints);
     if(retValue_ == 0)
     {
-        for(auto p : classifiedPoints)
+        for(const auto &p : classifiedPoints)
             if(p.second.compare("ground") == 0)
                 lidarDTMPoints.push_back(p.first);
             else
@@ -107,9 +117,9 @@ void CityGMLCore::removeOSMWayNodesFromBuildings(std::vector<std::string> &ways,
     std::map<uint, uint > pointPolygonLink;
     uint id = 0, i = 0;
     double meanDiagonal = 0;
-    for(auto buildingPolygons : polygons)
+    for(const auto &buildingPolygons : polygons)
     {
-        for(auto p : buildingPolygons.at(0))
+        for(const auto &p : buildingPolygons.at(0))
         {
             point_t point = { p->getX(),
                               p->getY(),
@@ -142,25 +152,25 @@ void CityGMLCore::removeOSMWayNodesFromBuildings(std::vector<std::string> &ways,
             neighbors_distances.clear();
             std::vector<size_t> neighbors = tree.neighborhood_indices(query_point, meanDiagonal / 2);
 
-            for(std::vector<size_t >::iterator it = neighbors.begin(); it != neighbors.end(); it++){
-                std::vector<uint>::iterator pit = std::find(neighboringPolygons.begin(), neighboringPolygons.end(), pointPolygonLink.at(*it));
+            for(const auto &n : neighbors){
+                auto pit = std::find(neighboringPolygons.begin(), neighboringPolygons.end(), pointPolygonLink.at(n));
                 if(pit == neighboringPolygons.end())
-                    neighboringPolygons.push_back(pointPolygonLink.at(*it));
+                    neighboringPolygons.push_back(pointPolygonLink.at(n));
             }
 
-            for(auto npit = neighboringPolygons.begin(); npit != neighboringPolygons.end(); npit++)
+            for(const auto& np : neighboringPolygons)
             {
                 auto v = std::make_shared<SemantisedTriangleMesh::Point>();
-                bool insideOuter = Utilities::isPointInsidePolygon(v, polygons.at(*npit).at(0));
+                bool insideOuter = Utilities::isPointInsidePolygon(v, polygons.at(np).at(0));
                 bool outsideInners = true;
 
-                for(auto pit = polygons.at((*npit)).begin(); pit != polygons.at((*npit)).end(); pit++)
-                    outsideInners = outsideInners && !Utilities::isPointInsidePolygon(v, *pit);
+                for(const auto& polygon : polygons.at(np))
+                    outsideInners = outsideInners && !Utilities::isPointInsidePolygon(v, polygon);
 
                 if(insideOuter && outsideInners)
                 {
                     bool onBoundary = false;
-                    for(auto pit = polygons.at((*npit)).begin(); pit != polygons.at((*npit)).end(); pit++)
+                    for(auto pit = polygons.at(np).begin(); pit != polygons.at(np).end(); pit++)
                     {
                         for(uint m = 1; m < pit->size(); m++)
                         {
@@ -200,10 +210,10 @@ void CityGMLCore::removeLinePointsInsideBuildings(std::vector<VertexList> &stree
     std::map<uint, uint > pointBuildingLink;
     uint id = 0, i = 0;
     double meanDiagonal = 0;
-    for(auto building : buildings)
+    for(const auto &building : buildings)
     {
-        auto boundaries = building->getOutlines();
-        for(auto p : boundaries.at(0))
+        const auto &boundaries = building->getOutlines();
+        for(const auto &p : boundaries.at(0))
         {
             point_t point = { p->getX(),
                               p->getY(),
@@ -408,8 +418,6 @@ bool CityGMLCore::arePolygonsAdjacent(VertexList p1, VertexList p2) const
 {
 
     //std::reverse(p2.begin(), p2.end());
-    if(*p1[0] == *p1.back()) p1.erase(p1.begin() + p1.size() - 1); //pop_back?
-    if(*p2[0] == *p2.back()) p2.erase(p2.begin() + p2.size() - 1);//pop_back?
     std::vector<std::shared_ptr<SemantisedTriangleMesh::Point> > poly1(p1.begin(), p1.end());
     std::vector<std::shared_ptr<SemantisedTriangleMesh::Point> > poly2(p2.begin(), p2.end());
     if(Utilities::isPolygonClockwise(poly1))
@@ -418,7 +426,7 @@ bool CityGMLCore::arePolygonsAdjacent(VertexList p1, VertexList p2) const
         std::reverse(poly2.begin(), poly2.end());
     for(uint i = 0; i < poly1.size(); i++)
         for(uint j = 0; j < poly2.size(); j++)
-            if(*poly1[i] == *poly2[j] && *poly1[Utilities::mod(i + 1, poly1.size())] == *poly2[Utilities::mod(j + 1, poly2.size())])
+            if(*poly1[i] == *poly2[j] && *poly1[(i + 1) % poly1.size()] == *poly2[(j + 1) % poly2.size()])
             {
                 return true;
             }
@@ -506,12 +514,12 @@ void CityGMLCore::removeOSMWayNodesFromBuildings(std::vector<std::string> &ways)
     double meanDiagonal = 0;
 
     // Loop through each building in the 'buildings' vector
-    for (auto building : buildings) {
+    for (auto &building : buildings) {
         // Get the outlines of the building
         auto boundaries = building->getOutlines();
 
         // Process each point in the building's outer boundary
-        for (auto p : boundaries.at(0)) {
+        for (auto &p : boundaries.at(0)) {
             // Create a 2D point from the point's x and y coordinates and set the z coordinate to 0
             point_t point = { p->getX(), p->getY(), 0 };
             points_vector.push_back(point);
@@ -534,17 +542,15 @@ void CityGMLCore::removeOSMWayNodesFromBuildings(std::vector<std::string> &ways)
     KDTree tree(points_vector);
     uint counter = 0;
 
-    // Parallel loop using OpenMP with 31 threads (num_threads(31))
-    #pragma omp parallel for num_threads(31)
-    for (auto lit = ways.begin(); lit != ways.end(); lit++) {
+    for (const auto &w : ways) {
         // Get the OSM way for the current ID
-        auto way = osm.getWay(*lit);
+        auto way = osm.getWay(w);
         auto nodes = way->getNodes();
 
         // Process each node of the way
-        for (auto nit = nodes.begin(); nit != nodes.end(); nit++) {
+        for (auto &node : nodes) {
             PointList intersections;
-            auto v = (*nit)->getCoordinates();
+            auto v = node->getCoordinates();
 
             // Find the neighbors (buildings) of the current node within a specified radius (meanDiagonal / 2)
             std::vector<std::pair<size_t, double>> neighbors_distances;
@@ -554,10 +560,10 @@ void CityGMLCore::removeOSMWayNodesFromBuildings(std::vector<std::string> &ways)
             auto neighbors = tree.neighborhood_indices(query_point, meanDiagonal / 2);
 
             // Find neighboring polygons (buildings) based on their points' indices
-            for (auto it = neighbors.begin(); it != neighbors.end(); it++) {
-                auto pit = std::find(neighboringPolygons.begin(), neighboringPolygons.end(), pointBuildingLink.at(*it));
+            for (auto &building : neighbors) {
+                auto pit = std::find(neighboringPolygons.begin(), neighboringPolygons.end(), pointBuildingLink.at(building));
                 if (pit == neighboringPolygons.end())
-                    neighboringPolygons.push_back(pointBuildingLink.at(*it));
+                    neighboringPolygons.push_back(pointBuildingLink.at(building));
             }
 
             // Check if the node lies inside any neighboring building's outer boundary and outside all inner boundaries
@@ -574,10 +580,10 @@ void CityGMLCore::removeOSMWayNodesFromBuildings(std::vector<std::string> &ways)
                 // If the point is inside the outer boundary and outside all inner boundaries, check if it is on the boundary
                 if (insideOuter && outsideInners) {
                     bool onBoundary = false;
-                    for (auto pit = building_boundaries.begin(); pit != building_boundaries.end(); pit++) {
-                        for (uint m = 1; m < pit->size(); m++) {
-                            auto p1 = pit->at(m - 1);
-                            auto p2 = pit->at(m);
+                    for (auto &boundary : building_boundaries) {
+                        for (uint m = 1; m < boundary.size(); m++) {
+                            auto p1 = boundary.at(m - 1);
+                            auto p2 = boundary.at(m);
                             double p1z = p1->getZ();
                             p1->setZ(0);
                             double p2z = p2->getZ();
@@ -597,21 +603,16 @@ void CityGMLCore::removeOSMWayNodesFromBuildings(std::vector<std::string> &ways)
 
                     // If the point is not on the boundary, remove the node from the OSM data
                     if (!onBoundary) {
-                        osm.removeNode((*nit)->getId());
+                        osm.removeNode(node->getId());
                         break;
                     }
                 }
             }
         }
-
-        // Critical section to safely update the progress counter and display it
-        #pragma omp critical
-        {
-            counter++;
-            std::cout << counter * 100 / ways.size() << "%\r" << std::flush;
-        }
+        counter++;
+        std::cout << counter * 100 / ways.size() << "%\r";
     }
-    std::cout << std::endl;
+    std::cout << std::endl << std::flush;
 }
 
 // Function to extract building heights from LiDAR data based on building outlines.
@@ -621,7 +622,7 @@ std::vector<std::vector<double>> CityGMLCore::extractBuildingsHeightsFromLidar(d
     unsigned int counter = 0; // Counter for tracking progress
 
     // Initialize an empty vector for each building
-    for (auto building : buildings)
+    for (auto &building : buildings)
     {
         std::vector<double> building_heights;
         heights.push_back(building_heights);
@@ -646,28 +647,29 @@ std::vector<std::vector<double>> CityGMLCore::extractBuildingsHeightsFromLidar(d
     #pragma omp parallel for num_threads(31)
     for (uint i = 0; i < buildings.size(); i++)
     {
-        auto boundaries = buildings.at(i)->getOutlines();
+        const auto &boundaries = buildings.at(i)->getOutlines();
         std::vector<VertexList> boundaries2D;
 
         // Convert building boundaries to 2D points
-        for (auto boundary : boundaries)
+        for (const auto &boundary : boundaries)
         {
             VertexList boundary2D;
-            for (auto v : boundary)
-            {
+            for (const auto &v : boundary)
                 boundary2D.push_back(std::make_shared<Vertex>(v->getX(), v->getY(), 0.0));
-            }
+
+            if(*boundary2D.back() != *boundary2D[0])
+                boundary2D.push_back(boundary2D.at(0));
             boundaries2D.push_back(boundary2D);
         }
 
         // Calculate the middle point and sphere radius for nearest neighbor search
-        std::vector<std::shared_ptr<SemantisedTriangleMesh::Point>> bb = Utilities::bbExtraction(boundaries2D[0]);
+        const std::vector<std::shared_ptr<SemantisedTriangleMesh::Point>> &bb = Utilities::bbExtraction(boundaries2D[0]);
         double sphere_radius = ((*bb[0]) - (*bb[2])).norm() / 2;
         SemantisedTriangleMesh::Point middle(0, 0, 0);
         std::for_each(boundaries2D[0].begin(), boundaries2D[0].end(), [&middle](std::shared_ptr<Vertex> v){
             middle += *v;
         });
-        middle /= boundaries2D[0].size();
+        middle /= static_cast<double>(boundaries2D[0].size());
 
         std::vector<size_t> neighbors_indices;
         std::vector<std::pair<unsigned int, unsigned int>> neighbors;
@@ -679,9 +681,9 @@ std::vector<std::vector<double>> CityGMLCore::extractBuildingsHeightsFromLidar(d
         uint counter = 0; // Counter for tracking progress within each building
 
         // Loop through neighbors and check if they are inside the building boundaries
-        for (unsigned int j = 0; j < neighbors_indices.size(); j++)
+        for (auto index : neighbors_indices)
         {
-            auto v = lidarDSMPoints.at(neighbors_indices.at(j));
+            auto v = lidarDSMPoints.at(index);
             auto p = std::make_shared<SemantisedTriangleMesh::Point>(v->getX(), v->getY(), 0);
 
             bool insideOuter = false, outsideInner = true;
@@ -704,7 +706,7 @@ std::vector<std::vector<double>> CityGMLCore::extractBuildingsHeightsFromLidar(d
 
             // If the LiDAR point is inside both outer and inner boundaries, add its height to the building's heights vector
             if (insideOuter && outsideInner)
-                heights[i].push_back(lidarDSMPoints.at(neighbors_indices[j])->getZ());
+                heights[i].push_back(lidarDSMPoints.at(index)->getZ());
         }
 
         // If no height was found for the building, add the default height from its outline
@@ -723,15 +725,15 @@ std::vector<std::vector<double>> CityGMLCore::extractBuildingsHeightsFromLidar(d
 }
 
 // Function to associate elevations from LiDAR data to sets of points.
-void CityGMLCore::associateElevations(std::vector<std::vector<VertexList>> triangulationHoles, std::vector<VertexList> streetsArcsPoints)
+void CityGMLCore::associateElevations(const std::vector<std::vector<VertexList>> &triangulationHoles, const std::vector<VertexList> &streetsArcsPoints)
 {
     unsigned int counter = 0; // Counter for tracking progress
 
     // Convert LiDAR DTM points to a 2D point vector
     pointVec points_vector;
-    for (unsigned int i = 0; i < lidarDTMPoints.size(); i++)
+    for (const auto &p : lidarDTMPoints)
     {
-        std::vector<double> point = {lidarDTMPoints[i]->getX(), lidarDTMPoints[i]->getY(), 0.0};
+        std::vector<double> point = {p->getX(), p->getY(), 0.0};
         points_vector.push_back(point);
     }
 
@@ -743,11 +745,9 @@ void CityGMLCore::associateElevations(std::vector<std::vector<VertexList>> trian
     for (uint i = 0; i < triangulationHoles.size(); i++)
     {
         auto boundaries = triangulationHoles[i];
-        for (uint j = 0; j < boundaries.size() - 1; j++)
-        {
-            for (uint k = 0; k < boundaries[j].size(); k++)
+        for (const auto &boundary : boundaries)
+            for (const auto &p : boundary)
             {
-                std::shared_ptr<SemantisedTriangleMesh::Point> p = boundaries[j][k];
                 point_t point = {p->getX(), p->getY(), 0.0};
 
                 // Find the nearest LiDAR DTM point using the KDTree
@@ -755,7 +755,6 @@ void CityGMLCore::associateElevations(std::vector<std::vector<VertexList>> trian
                 // Set the elevation of the current point to the elevation of the nearest LiDAR DTM point
                 p->setZ(lidarDTMPoints[ret_index]->getZ());
             }
-        }
 
         // Update the progress counter and print progress
         #pragma omp critical
@@ -768,10 +767,9 @@ void CityGMLCore::associateElevations(std::vector<std::vector<VertexList>> trian
     #pragma omp parallel for num_threads(31)
     for (uint i = 0; i < streetsArcsPoints.size(); i++)
     {
-        auto polylines = streetsArcsPoints[i];
-        for (uint j = 0; j < polylines.size(); j++)
+        auto polyline = streetsArcsPoints[i];
+        for (const auto &p : polyline)
         {
-            std::shared_ptr<SemantisedTriangleMesh::Point> p = polylines[j];
             point_t point = {p->getX(), p->getY(), 0.0};
 
             // Find the nearest LiDAR DTM point using the KDTree
@@ -825,7 +823,7 @@ bool CityGMLCore::isPointOutsideBounds(const std::shared_ptr<SemantisedTriangleM
     return outside;
 }
 
-int CityGMLCore::buildLevel(uint level)
+int CityGMLCore::buildLevel(const uint level)
 {
 
     switch (level) {
@@ -838,17 +836,17 @@ int CityGMLCore::buildLevel(uint level)
 }
 
 // Function to read LiDAR data from a file and extract classified points within specified bounds.
-int CityGMLCore::readLiDAR(std::string filename,
-                           std::vector<std::string> allowedClasses,
-                           bool checkInsideBounds,
-                           std::vector<std::vector<std::shared_ptr<SemantisedTriangleMesh::Point>>> bounds,
+int CityGMLCore::readLiDAR(const std::string &filename,
+                           const std::vector<std::string> &allowedClasses,
+                           const bool checkInsideBounds,
+                           const std::vector<std::vector<std::shared_ptr<SemantisedTriangleMesh::Point>>> &bounds,
                            std::vector<std::pair<std::shared_ptr<SemantisedTriangleMesh::Point>, std::string>>& classifiedPoints)
 {
     // Open the LiDAR file for reading
     std::ifstream ifs;
     ifs.open(filename, std::ios::in | std::ios::binary);
 
-    if (ifs.is_open())
+    if (ifs.is_open() && bounds.size() > 0)
     {
         liblas::ReaderFactory f;
         liblas::Reader reader = f.CreateWithStream(ifs);
@@ -883,7 +881,8 @@ int CityGMLCore::readLiDAR(std::string filename,
                     // Check if the point is inside any inner boundaries (holes)
                     for (uint i = 1; i < bounds.size(); i++)
                     {
-                        if (Utilities::isPointInsidePolygon(p_2d, bounds[i]))
+                        auto bound = bounds.at(i);
+                        if (Utilities::isPointInsidePolygon(p_2d, bound))
                         {
                             insideBounds = false;
                             break;
@@ -985,16 +984,16 @@ void CityGMLCore::filterNodesOutsideBounds() {
 
 // Function to process OpenStreetMap ways and identify buildings and streets
 void CityGMLCore::processOpenStreetMapWays() {
-    for (auto ait = osm.getWays().begin(); ait != osm.getWays().end(); ait++) {
-        if (ait->second->checkTag(std::make_pair("building", "")))
-            buildingsArcs.push_back(ait->first);
+    for (const auto& way : osm.getWays()) {
+        if (way.second->checkTag(std::make_pair("building", "")))
+            buildingsArcs.push_back(way.first);
 
-        if (ait->second->checkTag(std::make_pair("highway", "")) &&
-            (!ait->second->checkTag(std::make_pair("area", "")) ||
-             ait->second->checkTag(std::make_pair("area", "no")))) {
-            fixWay(ait->second);
-            if (ait->second->getNodes().size() > 1)
-                streetsArcs.push_back(ait->first);
+        if (way.second->checkTag(std::make_pair("highway", "")) &&
+            (!way.second->checkTag(std::make_pair("area", "")) ||
+             way.second->checkTag(std::make_pair("area", "no")))) {
+            fixWay(way.second);
+            if (way.second->getNodes().size() > 1)
+                streetsArcs.push_back(way.first);
         }
     }
 }
@@ -1232,35 +1231,32 @@ void CityGMLCore::preProcessBuildings()
 
 void CityGMLCore::groupBuildings(std::vector<std::shared_ptr<BuildingsGroup> >& groups)
 {
-
-    std::set<std::string> usedBuildings;
-    unsigned int reachedGroupId = 0;
-    for(auto bit1 = buildings.begin(); bit1 != buildings.end(); bit1++)
+    uint reachedGroupId = 0;
+    for(const auto& b1 : buildings)
     {
-        auto it = usedBuildings.find((*bit1)->getId());
-        if(it == usedBuildings.end())
-            usedBuildings.insert((*bit1)->getId());
+        b1->addFlag(Building::FlagType::USED);
         auto group = std::make_shared<BuildingsGroup>();
         std::queue<std::shared_ptr<Building> > queue;
-        queue.push((*bit1));
+        queue.push(b1);
         while(!queue.empty())
         {
             auto building = queue.front();
-            if(building->getId().compare((*bit1)->getId()) != 0)
+            if((*building) != (*b1))
             {
-                (*bit1)->addAdjacentBuilding(building);
-                building->addAdjacentBuilding(*bit1);
+                b1->addAdjacentBuilding(building);
+                building->addAdjacentBuilding(b1);
             }
             queue.pop();
             group->addBuilding(building);
-            for(auto bit2 = buildings.begin(); bit2 != buildings.end(); bit2++)
+            for(const auto& b2 : buildings)
             {
-                auto it = usedBuildings.find((*bit2)->getId());
-                if((*bit1)->getId().compare((*bit2)->getId()) != 0 && it == usedBuildings.end() &&
-                    arePolygonsAdjacent(building->getOutlines().at(0), (*bit2)->getOutlines().at(0)))
+                if((*b1) == (*b2))
+                    continue;
+                if(b2->searchFlag(Building::FlagType::USED) == -1 &&
+                   arePolygonsAdjacent(building->getOutlines().at(0), b2->getOutlines().at(0)))
                 {
-                    usedBuildings.insert((*bit2)->getId());
-                    queue.push(*bit2);
+                    b2->addFlag(Building::FlagType::USED);
+                    queue.push(b2);
                 }
             }
         }
@@ -1271,6 +1267,8 @@ void CityGMLCore::groupBuildings(std::vector<std::shared_ptr<BuildingsGroup> >& 
         }
 
     }
+    for(auto b : buildings)
+        b->removeFlag(Building::FlagType::USED);
 }
 
 void CityGMLCore::generateVertices(std::vector<VertexList> &arcsPoints)
@@ -1318,6 +1316,7 @@ void CityGMLCore::processBuildingsGroups(std::vector<std::shared_ptr<BuildingsGr
         // Counter variable to keep track of building indices within the group
         uint counter = 0;
 
+
         // Get the list of buildings to be triangulated within the current group
         auto buildingsToBeTriangulated = group->getBuildings();
 
@@ -1325,7 +1324,7 @@ void CityGMLCore::processBuildingsGroups(std::vector<std::shared_ptr<BuildingsGr
         std::vector<std::shared_ptr<Vertex>> groupInnerVertices;
 
         // Loop through each building in the group
-        for (auto building : group->getBuildings()) {
+        for (const auto &building : group->getBuildings()) {
             // Check if the building's ID is already in the usedBuildings set
             auto it = std::find(usedBuildings.begin(), usedBuildings.end(), building->getId());
 
@@ -1435,1034 +1434,775 @@ void CityGMLCore::reInsertStreetsClippings(std::vector<std::pair<uint, uint> > k
 
 int CityGMLCore::buildLevel0()
 {
-    if(osmIsLoaded)
+    if(!osmIsLoaded)
+        return -1;
+
+    if(meshes[0] != nullptr)
+        meshes[0].reset();
+
+    meshes[0] = std::make_shared<TriangleMesh>();
+
+    // Calculate the minimum and maximum coordinates from lidarDTMPoints and bounds
+    SemantisedTriangleMesh::Point min(std::numeric_limits<double>::max(),
+              std::numeric_limits<double>::max(),
+              0);
+    SemantisedTriangleMesh::Point max(-std::numeric_limits<double>::max(),
+              -std::numeric_limits<double>::max(),
+              0);
+
+    calculateMinMax(min, max);
+    auto origin = std::make_shared<SemantisedTriangleMesh::Point>((min + max) / 2);
+    double city_size = (max - min).norm();
+
+    origin->setZ(0);
+
+    for(const auto &node : osm.getNodes()){
+        auto pos = node.second->getCoordinates();
+        OpenStreetMap::Point origin2D(origin->getX(), origin->getY());
+        *pos -= origin2D;
+        *pos /= city_size;
+    }
+
+    //Points normalization for reducing precision errors
+    normalizePoints(lidarDTMPoints, origin, city_size);
+    normalizePoints(lidarDSMPoints, origin, city_size);
+    for (auto& bound : bounds)
+        normalizePoints(bound, origin, city_size);
+
+    std::vector<PointList > boundaries;
+
+    std::cout << "Cleaning polygons/lines" << std::endl;
+
+    filterNodesOutsideBounds();
+    processOpenStreetMapWays();
+
+    this->buildings.clear();
+    std::set<std::string> usedWays;
+    std::cout.precision(15);
+    std::cout << city_size << std::endl;
+    origin->print(std::cout, BracketsType::NONE, " ");
+    std::cout << std::endl;
+
+    //Buildings are partly defined as relations and partly as ways
+    processRelations(usedWays);
+    //Remaining buildings are defined by simple OSMWays
+    processBuildingWays(usedWays);
+    //Removing buildings with points outside the bounds
+    preProcessBuildings();
+
+    std::cout << "Removing nodes into buildings"<< std::endl;
+    removeOSMWayNodesFromBuildings(streetsArcs);
+
+    //Fixing building boundaries after managing collision between buildings and streets
+    for(auto bit = buildings.begin(); bit != buildings.end();)
+    {
+        (*bit)->fixBoundaries();
+        if((*bit)->getOutlines().size() == 0)
+            bit = buildings.erase(bit);
+        else
+            bit++;
+    }
+
+    std::vector<VertexList > external_bb = {{
+        std::make_shared<Vertex>(min.getX(), min.getY(), 0.0),
+        std::make_shared<Vertex>(max.getX(), min.getY(), 0.0),
+        std::make_shared<Vertex>(max.getX(), max.getY(), 0.0),
+        std::make_shared<Vertex>(min.getX(), max.getY(), 0.0)
+    }};
+    *external_bb[0][0] = ((*external_bb[0][0]) - (*origin)) / city_size;
+    *external_bb[0][1] = ((*external_bb[0][1]) - (*origin)) / city_size;
+    *external_bb[0][2] = ((*external_bb[0][2]) - (*origin)) / city_size;
+    *external_bb[0][3] = ((*external_bb[0][3]) - (*origin)) / city_size;
+
+    std::vector<std::vector<VertexList> > triangulationHoles = {external_bb};
+
+    std::vector<std::shared_ptr<BuildingsGroup> > groups;
+    std::cout << "Creating buildings' groups" << std::endl;
+    groupBuildings(groups);
+    std::cout << "Ended!" << std::endl;
+
+
+    std::vector<VertexList > arcsPoints, constraints; //Constraints are all the points that must be inserted in the triangulation
+
+    //Vertices generation from arcs
+    generateVertices(arcsPoints);
+
+    //Remove OSMNodes that are not part of the scene
+    for(auto nit = osm.getNodes().begin(); nit != osm.getNodes().end();)
+    {
+        auto n = *nit;
+        if(osmPointToMeshPointMap.find(nit->second->getCoordinates()) == osmPointToMeshPointMap.end())
+        {
+            nit = osm.removeNode(nit->second->getId());
+        } else
+            nit++;
+    }
+
+
+    //Checking if an arc is a singlet (error)
+    for(uint i = 0; i < arcsPoints.size(); i++)
+        if(arcsPoints.at(i).size() == 1)
+        {
+            std::cout <<"Found singlet" << std::endl;
+            exit(1312);
+        }
+
+
+    std::cout << "Removing inserted critical vertices:" << std::endl;
+    removeLinePointsInsideBuildings(arcsPoints);
+
+    std::cout << "Ended!" << std::endl;
+
+    for(uint i = 0; i < arcsPoints.size(); i++)
+        if(arcsPoints.at(i).size() < 2)
+        {
+            arcsPoints.erase(arcsPoints.begin() + i);
+            streetsArcs.erase(streetsArcs.begin() + i);
+            i--;
+        }
+
+    std::cout << "Removing segments intersecting buildings:" << std::endl;
+    //Removing arcs' clippings
+    auto keptClippings = removeSegmentsIntersectingBuildings(arcsPoints);  //VA SISTEMATO, DEVE USARE I GRUPPI DI EDIFICI
+    std::cout << "Ended!" << std::endl;
+    std::cout << "Extracting overall polygons" << std::endl;
+
+    // Set to keep track of used buildings (by their IDs) to ensure buildings are not part of multiple groups
+    std::set<std::string> usedBuildings;
+
+    processBuildingsGroups(groups, triangulationHoles, usedBuildings);
+    std::cout << "Ended!" << std::endl;
+
+    removeAlreadyExistingPoints(triangulationHoles, arcsPoints);
+
+    //Each street arc must be in the final triangulation
+    constraints.insert(constraints.end(), arcsPoints.begin(), arcsPoints.end());
+    //Each LiDAR point is should be inserted in the final triangulation
+
+    VertexList constraintVertices = createLiDARDTMVertices();
+
+    meshes[0]->triangulate(triangulationHoles, arcsPoints, constraintVertices);
+
+    //Removed clippings needs to be removed
+    reInsertStreetsClippings(keptClippings, arcsPoints);
+
+    std::cout << "Ended" << std::endl;
+
+    uint buildingPos = 0;
+    std::cout << "Starting buildings' triangulation" << std::endl << "0%";
+
+
+    for(const auto& building : buildings)
+    {
+        for(auto &boundary : building->getOutlines())
+        {
+            for(uint i = 1; i < boundary.size(); i++)
+            {
+                auto v1 = boundary.at(i - 1);
+                auto v2 = boundary.at(i);
+
+                auto closeVertices = meshes[0]->getVerticesCloseToLine(*v1, *v2, 1e-5);
+                auto it = closeVertices.begin();
+                while(it != closeVertices.end())
+                    if(!Utilities::isPointInSegment(v1.get(), v2.get(), it->get()))
+                        it = closeVertices.erase(it);
+                    else it++;
+
+                if(closeVertices.size() > 2)
+                {
+                    std::sort(closeVertices.begin(), closeVertices.end(), [boundary](std::shared_ptr<Vertex> v1,
+                                                                                     std::shared_ptr<Vertex> v2){
+                        double dist1 = (*v1 - *boundary[0]).norm();
+                        double dist2 = (*v2 - *boundary[0]).norm();
+                        return dist1 < dist2;
+                    });
+                    closeVertices.erase(closeVertices.begin());
+                    closeVertices.pop_back();
+
+                    boundary.insert(boundary.begin() + i, closeVertices.begin(), closeVertices.end());
+                    i += closeVertices.size();
+                }
+            }
+        }
+
+        std::vector<uint> shell_triangles;
+        std::map<uint, std::shared_ptr<Vertex> > pointsToVertices;
+        std::vector<std::vector<uint> > polylines;
+        std::vector<std::pair<uint, uint> > constraint_segments;
+        std::vector<double*> points;
+        std::vector<double*> constraints;
+        std::vector<double*> holes;
+        points.clear();
+        constraints.clear();
+        constraints.clear();
+        pointsToVertices.clear();
+        polylines.clear();
+        constraint_segments.clear();
+
+
+        std::map<std::string, std::vector<std::shared_ptr<Edge> > > verticesEdges;
+        uint reached_id = 0;
+        std::vector<uint> polyline;
+        auto boundaries = building->getOutlines();
+
+        for(uint j = 0; j < boundaries.size(); j++)
+        {
+            std::vector<uint> polyline;
+            uint first = reached_id;
+
+
+            for(uint k = 0; k < boundaries.at(j).size(); k++)
+            {
+                std::shared_ptr<Vertex> v = std::static_pointer_cast<Vertex>(boundaries.at(j).at(k));
+                if(k < boundaries.at(j).size() - 1)
+                {
+                    auto pit = std::find_if(points.begin(), points.end(), [v](double* p) {
+                        SemantisedTriangleMesh::Point p1(p[0], p[1], 0);
+                        SemantisedTriangleMesh::Point p2(v->getX(), v->getY(), 0);
+                        return  p1 == p2;
+                    });
+
+                    if(pit != points.end())
+                    {
+                        v = pointsToVertices.at(pit - points.begin());
+                        boundaries.at(j).at(k) = v;
+                    }
+
+                    if(v->getId().compare("") == 0)
+                    {
+                        v = meshes[0]->addNewVertex(v->getX(), v->getY(), v->getZ());
+                        v->setId(std::to_string(meshes[0]->getVerticesNumber() - 1));
+                        boundaries.at(j).at(k) = v;
+                    }
+
+                    std::vector<std::shared_ptr<Edge> > connected = std::static_pointer_cast<Vertex>(boundaries.at(j).at(k))->getVE();
+
+                    auto it = verticesEdges.find(v->getId());
+                    if(it == verticesEdges.end())
+                        verticesEdges.insert(std::make_pair(v->getId(), connected));
+
+                    if(pit == points.end())
+                    {
+                        points.push_back(v->toDoubleArray());
+                        pointsToVertices.insert(std::make_pair(reached_id, v));
+                        polyline.push_back(reached_id++);
+                    } else
+                    {
+                        polyline.push_back(pit - points.begin());
+                        if(k == 0)
+                            first = polyline.back();
+                    }
+                } else
+                {
+                    boundaries.at(j).pop_back();
+                    boundaries.at(j).push_back(boundaries.at(j).at(0));
+                    polyline.push_back(first);
+                }
+            }
+            building->setOutlines(boundaries);
+
+            polylines.push_back(polyline);
+
+            if(j > 0)
+            {
+                double v[2] = {(boundaries.at(j)[1]->getX() - boundaries.at(j)[0]->getX()) * 1E-2,
+                               (boundaries.at(j)[1]->getY() - boundaries.at(j)[0]->getY()) * 1E-2};
+                double vec[2] = {-v[1], v[0]};
+                double middle[2] = {(boundaries.at(j)[1]->getX() + boundaries.at(j)[0]->getX()) / 2,
+                                    (boundaries.at(j)[1]->getY() + boundaries.at(j)[0]->getY()) / 2};
+                double* innerpoint = new double(2);
+                innerpoint[0] = middle[0] - vec[0];
+                innerpoint[1] = middle[1] - vec[1];
+
+                holes.push_back(innerpoint);
+            }
+        }
+
+        TriHelper::TriangleHelper helper(points, polylines, holes, false, true);
+        std::vector<double*> generated_points = helper.getAddedPoints();
+
+
+        std::vector<std::shared_ptr<Vertex> > newVertices;
+        for(auto gpit = generated_points.begin(); gpit != generated_points.end(); gpit++)
+        {
+            std::vector<std::shared_ptr<Edge> > incident;
+            std::shared_ptr<Vertex> v = meshes[0]->addNewVertex((*gpit)[0], (*gpit)[1], 0);
+            v->setId(std::to_string(meshes[0]->getVerticesNumber() - 1));
+            verticesEdges.insert(std::make_pair(v->getId(), incident));
+            newVertices.push_back(v);
+        }
+        std::vector<uint> enclosing_triangles = helper.getTriangles();
+
+        std::vector<std::shared_ptr<Vertex> > debugPoints;
+        std::vector<std::tuple<uint, uint, uint> > debugTriangles;
+
+        for(uint j = 0; j < enclosing_triangles.size() / 3; j++)
+        {
+
+            std::shared_ptr<Vertex> v1, v2, v3;
+
+            if(enclosing_triangles[j * 3] < points.size())
+            {
+                v1 = pointsToVertices[enclosing_triangles[j * 3]];
+            } else
+            {
+                v1 = newVertices.at(enclosing_triangles[j * 3] - points.size());
+            }
+
+            if(enclosing_triangles[j * 3 + 1] < points.size())
+            {
+                v2 = pointsToVertices[enclosing_triangles[j * 3 + 1]];
+            } else
+            {
+                v2 = newVertices.at(enclosing_triangles[j * 3 + 1] - points.size());
+            }
+
+            if(enclosing_triangles[j * 3 + 2] < points.size())
+            {
+                v3 = pointsToVertices[enclosing_triangles[j * 3 + 2]];
+            } else
+            {
+                v3 = newVertices.at(enclosing_triangles[j * 3 + 2] - points.size());
+            }
+
+            auto searchEdgeContainingVertex = [verticesEdges](std::shared_ptr<Vertex> v1, std::shared_ptr<Vertex> v2){
+                std::shared_ptr<Edge> edge = nullptr;
+                std::vector<std::shared_ptr<Edge> > list1 = verticesEdges.at(v1->getId());
+                auto it1 = std::find_if(list1.begin(), list1.end(), [v2](std::shared_ptr<Edge> e) { return e->hasVertex(v2);});
+                if(it1 != list1.end())
+                    edge = *it1;
+                else
+                {
+                    std::vector<std::shared_ptr<Edge> > list2 = verticesEdges.at(v2->getId());
+                    auto it2 = std::find_if(list2.begin(), list2.end(), [v1](std::shared_ptr<Edge> e) { return e->hasVertex(v1);});
+                    if(it2 != list2.end())
+                        edge = *it2;
+                }
+
+                return edge;
+            };
+
+            std::shared_ptr<Edge> e1 = searchEdgeContainingVertex(v1, v2);
+            if(e1 == nullptr)
+            {
+                e1 = meshes[0]->addNewEdge(v1, v2);
+                e1->setId(std::to_string(meshes[0]->getEdgesNumber()));
+                verticesEdges[v1->getId()].push_back(e1);
+                verticesEdges[v2->getId()].push_back(e1);
+                if(v1->getE0() == nullptr)
+                    v1->setE0(e1);
+                if(v2->getE0() == nullptr)
+                    v2->setE0(e1);
+            }
+            std::shared_ptr<Edge> e2 = searchEdgeContainingVertex(v2,v3);
+            if(e2 == nullptr)
+            {
+                e2 = meshes[0]->addNewEdge(v2, v3);
+                e2->setId(std::to_string(meshes[0]->getEdgesNumber()));
+                verticesEdges[v2->getId()].push_back(e2);
+                verticesEdges[v3->getId()].push_back(e2);
+                if(v2->getE0() == nullptr)
+                    v2->setE0(e2);
+                if(v3->getE0() == nullptr)
+                    v3->setE0(e2);
+            }
+            std::shared_ptr<Edge> e3 = searchEdgeContainingVertex(v3, v1);
+            if(e3 == nullptr)
+            {
+                e3 = meshes[0]->addNewEdge(v3, v1);
+                e3->setId(std::to_string(meshes[0]->getEdgesNumber()));
+                verticesEdges[v3->getId()].push_back(e3);
+                verticesEdges[v1->getId()].push_back(e3);
+                if(v3->getE0() == nullptr)
+                    v3->setE0(e3);
+                if(v1->getE0() == nullptr)
+                    v1->setE0(e3);
+            }
+
+            std::shared_ptr<Triangle> t = meshes[0]->addNewTriangle(e1, e2, e3);
+            if(e1->getT1() == nullptr)
+                e1->setT1(t);
+            else if(e1->getT2() == nullptr)
+                e1->setT2(t);
+            else
+            {
+                std::cerr << "Non manifold configuration!" << std::endl;
+
+                meshes[0]->save("witherror.ply", 15);
+                std::cerr << "Vertices: " << std::endl;
+                e1->getV1()->print(std::cerr);
+                e1->getV2()->print(std::cerr);
+                std::cerr << "v1=";
+                std::static_pointer_cast<SemantisedTriangleMesh::Point>(v1)->print(std::cerr, BracketsType::SQUARE, " ");
+                std::cerr << "plot(v1(:,1),v1(:,2),'o'))" << std::endl;
+                std::cerr << "v2=";
+                std::static_pointer_cast<SemantisedTriangleMesh::Point>(v2)->print(std::cerr, BracketsType::SQUARE, " ");
+                std::cerr << "plot(v2(:,1),v2(:,2),'o'))" << std::endl;
+                std::cerr << "v3=";
+                std::static_pointer_cast<SemantisedTriangleMesh::Point>(v3)->print(std::cerr, BracketsType::SQUARE, " ");
+                std::cerr << "plot(v3(:,1),v3(:,2),'o'))" << std::endl;
+                uint counter = 0;
+                std::cerr <<"%New building" << std::endl;
+                const auto& boundaries = building->getOutlines();
+                for(const auto& boundary : boundaries)
+                {
+                    std::cerr << "B" << counter << "=[" << std::endl;
+                    for(const auto& p : boundary)
+                    {
+                        std::static_pointer_cast<SemantisedTriangleMesh::Point>(p)->print(std::cerr, BracketsType::NONE, " ");
+                    }
+                    std::cerr << "];" << std::endl;
+                    std::cerr << "plot(B" << counter << "(:,1), B" << counter++ << "(:,2));" << std::endl;
+                }
+
+
+                e1->getT1()->print(std::cerr);
+                e1->getT2()->print(std::cerr);
+                e1->getT1()->getV1()->print(std::cerr);
+                e1->getT1()->getV2()->print(std::cerr);
+                e1->getT1()->getV3()->print(std::cerr);
+                e1->getT2()->getV1()->print(std::cerr);
+                e1->getT2()->getV2()->print(std::cerr);
+                e1->getT2()->getV3()->print(std::cerr);
+
+                exit(123);
+            }
+
+            if(e2->getT1() == nullptr)
+                e2->setT1(t);
+            else if(e2->getT2() == nullptr)
+                e2->setT2(t);
+            else
+            {
+                std::cerr << "Non manifold configuration!" << std::endl;
+
+                meshes[0]->save("witherror.ply", 15);
+
+                std::cerr << "Vertices: " << std::endl;
+                e1->getV1()->print(std::cerr);
+                e1->getV2()->print(std::cerr);
+                std::cerr << "v1=";
+                std::static_pointer_cast<SemantisedTriangleMesh::Point>(v1)->print(std::cerr, BracketsType::SQUARE, " ");
+                std::cerr << "plot(v1(:,1),v1(:,2),'o'))" << std::endl;
+                std::cerr << "v2=";
+                std::static_pointer_cast<SemantisedTriangleMesh::Point>(v2)->print(std::cerr, BracketsType::SQUARE, " ");
+                std::cerr << "plot(v2(:,1),v2(:,2),'o'))" << std::endl;
+                std::cerr << "v3=";
+                std::static_pointer_cast<SemantisedTriangleMesh::Point>(v3)->print(std::cerr, BracketsType::SQUARE, " ");
+                std::cerr << "plot(v3(:,1),v3(:,2),'o'))" << std::endl;
+                uint counter = 0;
+                std::cerr <<"%New building" << std::endl;
+                auto boundaries = building->getOutlines();
+                for(const auto &boundary : boundaries)
+                {
+                    std::cerr << "B" << counter << "=[" << std::endl;
+                    for(const auto &p : boundary)
+                    {
+                        std::static_pointer_cast<SemantisedTriangleMesh::Point>(p)->print(std::cerr, BracketsType::NONE, " ");
+                    }
+                    std::cerr << "];" << std::endl;
+                    std::cerr << "plot(B" << counter << "(:,1), B" << counter++ << "(:,2));" << std::endl;
+                }
+                std::cerr << "Structure" << std::endl;
+                for_each(points.begin(), points.end(), [](double* p) { std::cerr << p[0] << " " << p[1] << std::endl;});
+                for_each(enclosing_triangles.begin(), enclosing_triangles.end(), [](uint id) { std::cerr << id << std::endl;});
+                std::cerr << "Triangle:" << std::endl;
+                std::cerr << points[enclosing_triangles[j * 3]][0] << " " << points[enclosing_triangles[j * 3]][1] << std::endl;
+                std::cerr << points[enclosing_triangles[j * 3 + 1]][0] << " " << points[enclosing_triangles[j * 3 + 1]][1] << std::endl;
+                std::cerr << points[enclosing_triangles[j * 3 + 2]][0] << " " << points[enclosing_triangles[j * 3 + 2]][1] << std::endl;
+                exit(123);
+            }
+
+            if(e3->getT1() == nullptr)
+                e3->setT1(t);
+            else if(e3->getT2() == nullptr)
+                e3->setT2(t);
+            else
+            {
+                std::cerr << "Non manifold configuration!" << std::endl;
+
+                meshes[0]->save("witherror.ply", 15);
+                std::cerr << "Vertices: " << std::endl;
+                e1->getV1()->print(std::cerr);
+                e1->getV2()->print(std::cerr);
+                std::cerr << "v1=";
+                std::static_pointer_cast<SemantisedTriangleMesh::Point>(v1)->print(std::cerr, BracketsType::SQUARE, " ");
+                std::cerr << "plot(v1(:,1),v1(:,2),'o'))" << std::endl;
+                std::cerr << "v2=";
+                std::static_pointer_cast<SemantisedTriangleMesh::Point>(v2)->print(std::cerr, BracketsType::SQUARE, " ");
+                std::cerr << "plot(v2(:,1),v2(:,2),'o'))" << std::endl;
+                std::cerr << "v3=";
+                std::static_pointer_cast<SemantisedTriangleMesh::Point>(v3)->print(std::cerr, BracketsType::SQUARE, " ");
+                std::cerr << "plot(v3(:,1),v3(:,2),'o'))" << std::endl;
+                uint counter = 0;
+                std::cerr <<"%New building" << std::endl;
+                auto boundaries = building->getOutlines();
+                for(auto boundary : boundaries)
+                {
+                    std::cerr << "B" << counter << "=[" << std::endl;
+                    for(auto p : boundary)
+                    {
+                        std::static_pointer_cast<SemantisedTriangleMesh::Point>(p)->print(std::cerr, BracketsType::NONE, " ");
+                    }
+                    std::cerr << "];" << std::endl;
+                    std::cerr << "plot(B" << counter << "(:,1), B" << counter++ << "(:,2));" << std::endl;
+                }
+
+
+                std::cerr << "%Triangulation holes" << std::endl;
+                std::cerr << "figure; hold all;" << std::endl;
+
+                exit(123);
+            }
+
+        }
+
+    }
+
+    for(uint i = 0; i < meshes[0]->getVerticesNumber(); i++)
+    {
+        std::shared_ptr<Vertex> v = meshes[0]->getVertex(i);
+        v->setX(v->getX() * city_size + origin->getX());
+        v->setY(v->getY() * city_size + origin->getY());
+        v->setZ(v->getZ() * city_size + origin->getZ());
+    }
+
+    std::cout << "Ended" << std::endl << "Adapting elevations to DTM" << std::endl;
+
+    origin.reset();
+
+    meshes[0]->save("prova.ply", 15);
+    std::cout << "Ended" << std::endl << "Associating elevations" << std::endl;
+
+    for(uint i = 0; i < meshes[0]->getVerticesNumber(); i++)
+        meshes[0]->getVertex(i)->clearFlags();
+
+    for(uint i = 0; i < meshes[0]->getVerticesNumber(); i++)
+    {
+        auto v = meshes[0]->getVertex(i);
+        if(v->getZ() == 0.0)
+        {
+            uint size = 1, counter = 0;
+            double mean = 0;
+
+            std::vector<std::shared_ptr<Vertex>> used = {v};
+            std::queue<std::shared_ptr<Vertex>> queue;
+            queue.push(v);
+            v->addFlag(FlagType::USED);
+            uint level = 0;
+            do
+            {
+                auto v_ = queue.front();
+                queue.pop();
+
+                std::vector<std::shared_ptr<SemantisedTriangleMesh::Vertex> > neighbourhood;
+                auto oneRing = v_->getVV();
+                for(const auto& vTMP : oneRing)
+                    if(vTMP->searchFlag(FlagType::USED) == -1)
+                    {
+                        vTMP->addFlag(FlagType::USED);
+                        used.push_back(vTMP);
+                        queue.push(vTMP);
+                        neighbourhood.push_back(vTMP);
+                    }
+
+                for(auto &vTMP : neighbourhood)
+                {
+                    if(vTMP->getZ() != 0.0)
+                    {
+                        mean += vTMP->getZ();
+                        counter++;
+                    }
+                }
+                if(counter != 0)
+                    mean /= counter;
+                level++;
+            } while(counter == 0 && level < 100);
+            for(const auto& v_ : used)
+                v_->clearFlags();
+            v->setZ(mean);
+
+        }
+    }
+    for(uint i = 0; i < meshes[0]->getVerticesNumber(); i++)
+        meshes[0]->getVertex(i)->clearFlags();
+
+    std::cout << "Associating heights to buildings." << std::endl;
+    for(uint i = 0; i < buildings.size(); i++)
+    {
+        int row_min = -1, col_min = -1, row_max = 0, col_max = 0;
+        double elevation_min = std::numeric_limits<double>::max(),
+               elevation_max = -std::numeric_limits<double>::max(),
+               elevation_mean = 0;
+
+        auto boundaries = buildings.at(i)->getOutlines();
+        uint boundariesPointsNumber = 0;
+        for(uint j = 0; j < boundaries.size(); j++)
+        {
+            for(uint k = 0; k < boundaries.at(j).size() - 1; k++)
+            {
+                double d = boundaries.at(j).at(k)->getZ();
+                elevation_mean += d;
+                if(elevation_min > d)
+                    elevation_min = d;
+                if(elevation_max < d)
+                    elevation_max = d;
+            }
+            boundariesPointsNumber += boundaries.at(j).size() - 1;
+        }
+
+        elevation_mean /= boundariesPointsNumber;
+
+        boundaries = buildings.at(i)->getOutlines();
+        for(uint j = 0; j < boundaries.size(); j++)
+            for(uint k = 0; k < boundaries.at(j).size() - 1; k++)
+                boundaries.at(j).at(k)->setZ(elevation_max);
+    }
+    std::cout <<"Ended!" << std::endl;
+
+    meshes[0]->save("cacca.ply",15);
+
+    std::cout <<"Creating annotations." << std::endl;
+    unsigned char building_color[] = {255, 215, 0};
+    unsigned char street_color[] = {0, 0, 0};
+
+    std::map<Node*, std::shared_ptr<Vertex> > traversed_nodes;
+
+    uint i = 0;
+    for(auto ait = streetsArcs.begin(); ait != streetsArcs.end(); ait++)
+    {
+        std::shared_ptr<LineAnnotation> annotation = std::make_shared<LineAnnotation>();
+        std::vector<std::shared_ptr<Vertex> > annotationPolyline;
+        annotation->setId(std::to_string(i));
+        annotation->setTag("street n° " + std::to_string(i));
+        annotation->setColor(street_color);
+        std::vector<uint> flaggedMeshVertices;
+        double epsilon = 1e-5;
+
+        for(uint j = 1; j < arcsPoints.at(i).size(); j++)
+        {
+            auto v1 = arcsPoints.at(i).at(j - 1);
+            auto v2 = arcsPoints.at(i).at(j);
+
+            auto p = ((*v1) + (*v2)) / 2;
+            auto point = {p.getX(), p.getY(), p.getZ()};
+            auto neighbourhood = meshes[0]->getNearestNeighbours(p, (*v2 - *v1).norm() / 2 + SemantisedTriangleMesh::Point::EPSILON);
+            for(auto pi : neighbourhood)
+            {
+                pi->addFlag(FlagType::INSIDE);
+                flaggedMeshVertices.push_back(std::stoi(pi->getId()));
+            }
+
+        }
+
+        for(uint j = 1; j < arcsPoints.at(i).size(); j++)
+        {
+            auto v1 = arcsPoints.at(i).at(j - 1);
+            auto v2 = arcsPoints.at(i).at(j);
+            auto path = this->meshes[0]->getVerticesCloseToLine(*v1, *v2);
+            double dist = 0.0;
+            for(uint k = 1; k < path.size(); k++)
+                dist += (*path[k] - *path[k - 1]).norm();
+            if(path.size() > 1 && dist < 2 * (*v2 - *v1).norm())
+            {
+                path.pop_back();
+                arcsPoints.at(i).insert(arcsPoints.at(i).begin() + j, path.begin(), path.end());
+                j += path.size();
+            }
+        }
+
+        for(auto p : flaggedMeshVertices)
+            meshes[0]->getVertex(p)->removeFlag(FlagType::INSIDE);
+
+        for(uint j = 0; j < arcsPoints.at(i).size(); j++)
+        {
+            std::shared_ptr<Vertex> v = std::static_pointer_cast<Vertex>(arcsPoints.at(i).at(j));
+            uint id = static_cast<uint>(stoi(v->getId()));
+            if(arcsPoints.at(i).at(j)->getInfo() != nullptr)
+            {
+                Node* n = static_cast<Node*>(arcsPoints.at(i).at(j)->getInfo());
+                if(traversed_nodes.find(n) == traversed_nodes.end())
+                    traversed_nodes.insert(std::make_pair(n, v));
+            }
+            if(id > meshes[0]->getVerticesNumber())
+                std::cout << "Found deleted vertex in street: " << i << " " << j << std::endl;
+            else
+            {
+                annotationPolyline.push_back(v);
+            }
+        }
+        annotation->addPolyLine(annotationPolyline);
+
+        std::cout << i * 100 / streetsArcs.size() << "%\r" << std::flush;
+        i++;
+        std::shared_ptr<SemanticAttribute> attribute = std::make_shared<SemanticAttribute>();
+        attribute->setId(0);
+        attribute->setKey("osmid");
+        attribute->setValue(ait->c_str());
+        annotation->addAttribute(attribute);
+
+        annotation->setMesh(meshes[0]);
+        meshes[0]->addAnnotation(annotation);
+
+    }
+
+    meshes[0]->save("cacca2.ply", 15);
+    i = 0;
+    for(auto it = traversed_nodes.begin(); it != traversed_nodes.end(); it++)
     {
 
-        if(meshes[0] != nullptr)
-            meshes[0].reset();
+        std::shared_ptr<PointAnnotation> annotation = std::make_shared<PointAnnotation>();
+        annotation->setId(std::to_string((streetsArcs.size() - 1 + i)));
+        annotation->setTag("node n° " + std::to_string(i++));
+        annotation->setColor(street_color);
+        annotation->addPoint(it->second);
+
+        std::shared_ptr<SemanticAttribute> attribute = std::make_shared<SemanticAttribute>();
+        attribute->setId(0);
+        attribute->setKey("osmid");
+        attribute->setValue(it->first->getId());
+        annotation->addAttribute(attribute);
+
+        annotation->setMesh(meshes[0]);
+        meshes[0]->addAnnotation(annotation);
+
+    }
+    meshes[0]->save("cacca3.ply", 15);
+
+    uint bid = streetsArcs.size() + traversed_nodes.size();
+    uint counter=0;
+    for(uint i = 0; i < buildings.size(); i++)
+    {
+        auto boundaries = buildings[i]->getOutlines();
+        std::shared_ptr<SurfaceAnnotation> annotation = std::make_shared<SurfaceAnnotation>();
+        annotation->setId(std::to_string(bid));
+        annotation->setTag("building n° " + std::to_string(bid++));
+        annotation->setColor(building_color);
+
+        annotation->setOutlines(boundaries);
+
+        annotation->setMesh(meshes[0]);
+        meshes[0]->addAnnotation(annotation);
+        auto height = boundaries[0][0]->getZ();
+
+        auto involved = annotation->getInvolvedVertices();
+
+        for(uint j = 0; j < involved.size(); j++)
+            involved.at(j)->setZ(height);
+    }
+    meshes[0]->save("cacca4.ply", 15);
+
+    for(uint i = 0; i < meshes[0]->getVerticesNumber(); i++)
+        meshes[0]->getVertex(i)->setId(std::to_string(i));
+    for(uint i = 0; i < meshes[0]->getEdgesNumber(); i++)
+        meshes[0]->getEdge(i)->setId(std::to_string(i));
+    for(uint i = 0; i < meshes[0]->getTrianglesNumber(); i++)
+        meshes[0]->getTriangle(i)->setId(std::to_string(i));
+    SemantisedTriangleMesh::SemanticsFileManager manager;
+    manager.setMesh(meshes[0]);
+    manager.writeAnnotations("annotations.ant");
+    meshes[0]->save("level0.ply", 15);
 
-        meshes[0] = std::make_shared<TriangleMesh>();
-
-        // Calculate the minimum and maximum coordinates from lidarDTMPoints and bounds
-        SemantisedTriangleMesh::Point min(std::numeric_limits<double>::max(),
-                  std::numeric_limits<double>::max(),
-                  0);
-        SemantisedTriangleMesh::Point max(-std::numeric_limits<double>::max(),
-                  -std::numeric_limits<double>::max(),
-                  0);
-
-        calculateMinMax(min, max);
-        auto origin = std::make_shared<SemantisedTriangleMesh::Point>((min + max) / 2);
-        double city_size = (max - min).norm();
-
-        origin->setZ(0);
-
-        for(auto node : osm.getNodes()){
-            auto pos = node.second->getCoordinates();
-            OpenStreetMap::Point origin2D(origin->getX(), origin->getY());
-            *pos -= origin2D;
-            *pos /= city_size;
-        }
-
-        //Points normalization for reducing precision errors
-        normalizePoints(lidarDTMPoints, origin, city_size);
-        normalizePoints(lidarDSMPoints, origin, city_size);
-        for (auto& bound : bounds)
-            normalizePoints(bound, origin, city_size);
-
-        std::vector<PointList > boundaries;
-
-        std::cout << "Cleaning polygons/lines" << std::endl;
-
-        filterNodesOutsideBounds();
-        processOpenStreetMapWays();
-
-        this->buildings.clear();
-        std::set<std::string> usedWays;
-        std::cout.precision(15);
-        std::cout << city_size << std::endl;
-        origin->print(std::cout, BracketsType::NONE, " ");
-        std::cout << std::endl;
-
-        //Buildings are partly defined as relations and partly as ways
-        processRelations(usedWays);
-        //Remaining buildings are defined by simple OSMWays
-        processBuildingWays(usedWays);
-        //Removing buildings with points outside the bounds
-        preProcessBuildings();
-
-        std::cout << "Removing nodes into buildings"<< std::endl;
-        removeOSMWayNodesFromBuildings(streetsArcs);
-
-        //Fixing building boundaries after managing collision between buildings and streets
-        for(auto bit = buildings.begin(); bit != buildings.end();)
-        {
-            (*bit)->fixBoundaries();
-            if((*bit)->getOutlines().size() == 0)
-                bit = buildings.erase(bit);
-            else
-                bit++;
-        }
-
-        std::vector<VertexList > external_bb = {{
-            std::make_shared<Vertex>(min.getX(), min.getY(), 0.0),
-            std::make_shared<Vertex>(max.getX(), min.getY(), 0.0),
-            std::make_shared<Vertex>(max.getX(), max.getY(), 0.0),
-            std::make_shared<Vertex>(min.getX(), max.getY(), 0.0)
-        }};
-        *external_bb[0][0] = ((*external_bb[0][0]) - (*origin)) / city_size;
-        *external_bb[0][1] = ((*external_bb[0][1]) - (*origin)) / city_size;
-        *external_bb[0][2] = ((*external_bb[0][2]) - (*origin)) / city_size;
-        *external_bb[0][3] = ((*external_bb[0][3]) - (*origin)) / city_size;
-
-        std::vector<std::vector<VertexList> > triangulationHoles = {external_bb};
-
-        std::vector<std::shared_ptr<BuildingsGroup> > groups;
-        std::cout << "Creating buildings' groups" << std::endl;
-        groupBuildings(groups);
-        std::cout << "Ended!" << std::endl;
-
-
-        std::vector<VertexList > arcsPoints, constraints; //Constraints are all the points that must be inserted in the triangulation
-
-        //Vertices generation from arcs
-        generateVertices(arcsPoints);
-
-
-        //Remove OSMNodes that are not part of the scene
-        for(auto nit = osm.getNodes().begin(); nit != osm.getNodes().end();)
-        {
-            auto n = *nit;
-            if(osmPointToMeshPointMap.find(nit->second->getCoordinates()) == osmPointToMeshPointMap.end())
-            {
-                nit = osm.removeNode(nit->second->getId());
-            } else
-                nit++;
-        }
-
-        //Checking if an arc is a singlet (error)
-        for(uint i = 0; i < arcsPoints.size(); i++)
-            if(arcsPoints.at(i).size() == 1)
-            {
-                std::cout <<"Found singlet" << std::endl;
-                exit(1312);
-            }
-
-
-        std::cout << "Removing inserted critical vertices:" << std::endl;
-        removeLinePointsInsideBuildings(arcsPoints);
-
-        std::cout << "Ended!" << std::endl;
-
-        for(uint i = 0; i < arcsPoints.size(); i++)
-            if(arcsPoints.at(i).size() < 2)
-            {
-                arcsPoints.erase(arcsPoints.begin() + i);
-                streetsArcs.erase(streetsArcs.begin() + i);
-                i--;
-            }
-
-        std::cout << "Removing segments intersecting buildings:" << std::endl;
-        //Removing arcs' clippings
-        auto keptClippings = removeSegmentsIntersectingBuildings(arcsPoints);  //VA SISTEMATO, DEVE USARE I GRUPPI DI EDIFICI
-        std::cout << "Ended!" << std::endl;
-        std::cout << "Extracting overall polygons" << std::endl;
-
-        // Set to keep track of used buildings (by their IDs) to ensure buildings are not part of multiple groups
-        std::set<std::string> usedBuildings;
-
-        processBuildingsGroups(groups, triangulationHoles, usedBuildings);
-        std::cout << "Ended!" << std::endl;
-
-        removeAlreadyExistingPoints(triangulationHoles, arcsPoints);
-
-        //Each street arc must be in the final triangulation
-        constraints.insert(constraints.end(), arcsPoints.begin(), arcsPoints.end());
-        //Each LiDAR point is should be inserted in the final triangulation
-        VertexList constraintVertices = createLiDARDTMVertices();
-
-        meshes[0]->triangulate(triangulationHoles, arcsPoints, constraintVertices);
-
-        //Removed clippings needs to be removed
-        reInsertStreetsClippings(keptClippings, arcsPoints);
-
-        std::cout << "Ended" << std::endl;
-
-        uint buildingPos = 0;
-        std::cout << "Starting buildings' triangulation" << std::endl << "0%";
-
-
-        for(uint i = 1; i < triangulationHoles.size(); i++)
-        {
-            std::vector<uint> shell_triangles;
-            std::map<uint, std::shared_ptr<Vertex> > pointsToVertices;
-            std::vector<std::vector<uint> > polylines;
-            std::vector<std::pair<uint, uint> > constraint_segments;
-            std::vector<double*> points;
-            std::vector<double*> constraints;
-            std::vector<double*> holes;
-            points.clear();
-            constraints.clear();
-            constraints.clear();
-            pointsToVertices.clear();
-            polylines.clear();
-            constraint_segments.clear();
-
-
-            std::map<std::string, std::vector<std::shared_ptr<Edge> > > verticesEdges;
-            uint reached_id = 0;
-
-            std::vector<std::shared_ptr<Building> > buildingsToBeTriangulated;
-            if(i < groups.size() + 1)
-            {
-                buildingsToBeTriangulated = groups.at(i - 1)->getBuildings();
-                std::vector<std::shared_ptr<Vertex> > groupInnerVertices;
-
-                for(uint j = 1; j < triangulationHoles.at(i).at(0).size(); j++)
-                {
-                    auto v1 = triangulationHoles.at(i).at(0).at(j - 1);
-                    auto v2 = triangulationHoles.at(i).at(0).at(j);
-                    for(uint k = 0; k < buildingsToBeTriangulated.size(); k++)
-                    {
-                        auto boundaries = buildingsToBeTriangulated.at(k)->getOutlines();
-                        auto it2 = std::find_if(boundaries.at(0).begin(), boundaries.at(0).end(), [v2](std::shared_ptr<Vertex> v)
-                        {
-                            return *v == *v2;
-                        });
-                        if(it2 != boundaries.at(0).end())
-                        {
-                            auto it1 = std::find_if(boundaries.at(0).begin(), boundaries.at(0).end(), [v1](std::shared_ptr<Vertex> v)
-                            {
-                                return *v == *v1;
-                            });
-                            if(it1 != boundaries.at(0).end())
-                            {
-
-                                if(v1 == nullptr || v2 == nullptr ||
-                                   v1->getId().compare("") == 0 || v1->getE0() == nullptr ||
-                                   v2->getId().compare("") == 0 || v2->getE0() == nullptr)
-                                {
-                                    std::cerr << "For some reason, some vertices aren't initialized" << std::endl;
-                                    exit(-std::numeric_limits<int>::max());
-                                }
-                                std::vector<std::shared_ptr<Vertex> > shortestPath = this->meshes[0]->computeShortestPath(v1,v2, DistanceType::EUCLIDEAN_DISTANCE, true, true);
-
-                                if(shortestPath.size() > 1)
-                                {
-                                    shortestPath.pop_back();
-                                    if(it2 == boundaries[0].begin())
-                                    {
-                                        boundaries[0].pop_back();
-                                        boundaries[0].push_back(shortestPath[0]);
-                                    }
-
-                                    boundaries[0].insert(it2, shortestPath.begin(), shortestPath.end());
-                                    buildingsToBeTriangulated.at(k)->setOutlines(boundaries);
-                                    triangulationHoles.at(i).at(0).insert(triangulationHoles.at(i).at(0).begin() + j,
-                                                                           shortestPath.begin(), shortestPath.end());
-                                    j += shortestPath.size();
-                                }
-
-                            }
-                        }
-                    }
-                }
-
-                for(uint j = 1; j < triangulationHoles.at(i).size(); j++)
-                {
-                    auto v = triangulationHoles.at(i).at(j).at(0);
-                    std::vector<std::shared_ptr<SemantisedTriangleMesh::Vertex> > buildingBoundary;
-                    uint buildingPos = 0, boundaryPos;
-                    bool found = false;
-                    //Probabilemnte posso fare il check solo sul primo vertice
-                    for(; buildingPos < buildingsToBeTriangulated.size(); buildingPos++)
-                    {
-                        auto boundaries = buildingsToBeTriangulated.at(buildingPos)->getOutlines();
-                        boundaryPos = 1;
-                        for(; boundaryPos < boundaries.size(); boundaryPos++)
-                        {
-                            auto vit = std::find_if(boundaries.at(boundaryPos).begin(),
-                                                    boundaries.at(boundaryPos).end(),
-                                                    [v](std::shared_ptr<SemantisedTriangleMesh::Vertex> vertex)
-                            {
-                                return v->getId().compare(vertex->getId()) == 0;
-                            });
-                            if(vit != boundaries.at(boundaryPos).end())
-                            {
-                                buildingBoundary = boundaries.at(boundaryPos);
-                                found = true;
-                                break;
-                            }
-                        }
-                        if(found)
-                            break;
-                    }
-
-                    for(uint k = 1; k < triangulationHoles.at(i).at(j).size(); k++)
-                    {
-                        auto v1 = triangulationHoles.at(i).at(j).at(k - 1);
-                        auto v2 = triangulationHoles.at(i).at(j).at(k);
-                        std::vector<std::shared_ptr<Vertex> > shortestPath = this->meshes[0]->computeShortestPath(v1, v2, DistanceType::EUCLIDEAN_DISTANCE, true, true);
-
-                        if(shortestPath.size() > 1)
-                        {
-                            shortestPath.pop_back();
-                            triangulationHoles.at(i).at(j).insert(triangulationHoles.at(i).at(j).begin() + k,
-                                                                   shortestPath.begin(), shortestPath.end());
-                            auto boundaries = buildingsToBeTriangulated.at(buildingPos)->getOutlines();
-                            boundaries.at(boundaryPos).insert(boundaries.at(boundaryPos).begin() + k,
-                                                                   shortestPath.begin(), shortestPath.end());
-                            buildingsToBeTriangulated.at(buildingPos)->setOutlines(boundaries);
-                            k += shortestPath.size();
-                        }
-
-                    }
-                }
-            } else
-            {
-                auto list = buildings;
-                while(std::find_if(usedBuildings.begin(), usedBuildings.end(), [list, buildingPos](std::string s){
-                                   return list.at(buildingPos)->getId().compare(s) == 0;
-                                }) != usedBuildings.end())
-                    buildingPos++;
-
-                auto boundaries = buildings.at(buildingPos)->getOutlines();
-
-                for(uint j = 0; j < boundaries.size(); j++)
-                {
-                    for(uint k = 1; k < boundaries.at(j).size(); k++)
-                    {
-                        std::shared_ptr<Vertex> v1 = std::static_pointer_cast<Vertex>(boundaries[j][k - 1]);
-                        std::shared_ptr<Vertex> v2 = std::static_pointer_cast<Vertex>(boundaries[j][k]);
-
-                        if(v1 == nullptr || v2 == nullptr ||
-                           v1->getId().compare("") == 0 || v1->getE0() == nullptr ||
-                           v2->getId().compare("") == 0 || v2->getE0() == nullptr)
-                        {
-                            if(v1 != nullptr && v2 != nullptr)
-                            {
-                                if(v1->getInfo() != nullptr)
-                                {
-                                    Node* n = static_cast<Node*>(v1->getInfo());
-                                    n->print(std::cout);
-                                }
-
-                                if(v2->getInfo() != nullptr)
-                                {
-                                    Node* n = static_cast<Node*>(v2->getInfo());
-                                    n->print(std::cout);
-                                }
-                            }
-
-                            std::cout << "Disconnected vertex!" << std::endl;
-                            v1->print(std::cerr);
-                            v2->print(std::cerr);
-                            meshes[0]->save("witherror.ply", 15);
-
-                            for(uint j = 0; j < boundaries.size(); j++)
-                            {
-                                std::cout << "B"<< j << "=[" << std::endl;
-                                for(uint k = 0; k < boundaries.at(j).size(); k++)
-                                {
-                                    std::static_pointer_cast<SemantisedTriangleMesh::Point>(boundaries.at(j).at(k))->print(std::cout, BracketsType::NONE, " ");
-                                }
-                                std::cout << "];" << std::endl;
-                                std::cout << "plot(B" << j << "(:,1), B" << j << "(:,2));" << std::endl;
-                                std::cout << "labels=num2cell(0:length(B" << j << ")-1);" << std::endl;
-                                std::cout << "text(B" << j << "(:,1), B" << j << "(:,2), labels);" << std::endl << std::endl;
-                            }
-                            std::cout << std::flush;
-                            exit(88);
-                        }
-                        /****************LA SEGUENTE E' UNA DELLE PEGGIORI SCHIFEZZE CHE ABBIA MAI FATTO, DA RIMUOVERE ASSOLUTAMENTE*******************************/
-                        std::vector<std::shared_ptr<Vertex> > shortestPath = this->meshes[0]->computeShortestPath(v1, v2, DistanceType::EUCLIDEAN_DISTANCE, true, true);
-                        if(shortestPath.size() > 1)
-                        {
-                            shortestPath.pop_back();
-
-                            if(k == 0)
-                            {
-                                boundaries[j].pop_back();
-                                boundaries[j].push_back(shortestPath[0]);
-                            }
-                            boundaries[j].insert(boundaries[j].begin() + k, shortestPath.begin(), shortestPath.end());
-                            k += shortestPath.size();
-                        }
-                    }
-                }
-                buildings.at(buildingPos)->setOutlines(boundaries);
-
-                buildingsToBeTriangulated = {buildings.at(buildingPos)};
-                buildingPos++;
-            }
-
-
-            uint w = 0;
-
-            for(auto building : buildingsToBeTriangulated)
-            {
-                std::vector<uint> polyline;
-                auto boundaries = building->getOutlines();
-
-                for(uint j = 0; j < boundaries.size(); j++)
-                {
-                    std::vector<uint> polyline;
-                    uint first = reached_id;
-
-                    for(uint k = 0; k < boundaries.at(j).size(); k++)
-                    {
-                        std::shared_ptr<Vertex> v = std::static_pointer_cast<Vertex>(boundaries.at(j).at(k));
-                        if(k < boundaries.at(j).size() - 1)
-                        {
-                            auto pit = std::find_if(points.begin(), points.end(), [v](double* p) {
-                                SemantisedTriangleMesh::Point p1(p[0], p[1], 0);
-                                SemantisedTriangleMesh::Point p2(v->getX(), v->getY(), 0);
-                                return  p1 == p2;
-                            });
-
-                            if(pit != points.end())
-                            {
-                                v = pointsToVertices.at(pit - points.begin());
-                                boundaries.at(j).at(k) = v;
-                            }
-
-                            if(v->getId().compare("") == 0)
-                            {
-                                v = meshes[0]->addNewVertex(v->getX(), v->getY(), v->getZ());
-                                v->setId(std::to_string(meshes[0]->getVerticesNumber() - 1));
-                                boundaries.at(j).at(k) = v;
-                            }
-
-                            std::vector<std::shared_ptr<Edge> > connected = std::static_pointer_cast<Vertex>(boundaries.at(j).at(k))->getVE();
-
-                            auto it = verticesEdges.find(v->getId());
-                            if(it == verticesEdges.end())
-                                verticesEdges.insert(std::make_pair(v->getId(), connected));
-
-                            if(pit == points.end())
-                            {
-                                points.push_back(v->toDoubleArray());
-                                pointsToVertices.insert(std::make_pair(reached_id, v));
-                                polyline.push_back(reached_id++);
-                            } else
-                            {
-                                polyline.push_back(pit - points.begin());
-                                if(k == 0)
-                                    first = polyline.back();
-                            }
-                        } else
-                        {
-                            boundaries.at(j).pop_back();
-                            boundaries.at(j).push_back(boundaries.at(j).at(0));
-                            polyline.push_back(first);
-                        }
-                    }
-
-                    polylines.push_back(polyline);
-
-                    if(j > 0)
-                    {
-                        double v[2] = {(boundaries.at(j)[1]->getX() - boundaries.at(j)[0]->getX()) * 1E-2,
-                                       (boundaries.at(j)[1]->getY() - boundaries.at(j)[0]->getY()) * 1E-2};
-                        double vec[2] = {-v[1], v[0]};
-                        double middle[2] = {(boundaries.at(j)[1]->getX() + boundaries.at(j)[0]->getX()) / 2,
-                                            (boundaries.at(j)[1]->getY() + boundaries.at(j)[0]->getY()) / 2};
-                        double* innerpoint = new double(2);
-                        innerpoint[0] = middle[0] - vec[0];
-                        innerpoint[1] = middle[1] - vec[1];
-
-                        holes.push_back(innerpoint);
-                    }
-                }
-
-                building->setOutlines(boundaries);/*
-                for(auto pi : flaggedMeshVertices)
-                    meshes[0]->getVertex(pi)->removeFlag(FlagType::INSIDE);*/
-
-                w++;
-
-            }
-
-            TriHelper::TriangleHelper helper(points, polylines, holes, false, true);
-            std::vector<double*> generated_points = helper.getAddedPoints();
-
-
-            std::vector<std::shared_ptr<Vertex> > newVertices;
-            for(auto gpit = generated_points.begin(); gpit != generated_points.end(); gpit++)
-            {
-                std::vector<std::shared_ptr<Edge> > incident;
-                std::shared_ptr<Vertex> v = meshes[0]->addNewVertex((*gpit)[0], (*gpit)[1], 0);
-                v->setId(std::to_string(meshes[0]->getVerticesNumber() - 1));
-                verticesEdges.insert(std::make_pair(v->getId(), incident));
-                newVertices.push_back(v);
-            }
-            std::vector<uint> enclosing_triangles = helper.getTriangles();
-
-            std::vector<std::shared_ptr<Vertex> > debugPoints;
-            std::vector<std::tuple<uint, uint, uint> > debugTriangles;
-
-            for(uint j = 0; j < enclosing_triangles.size() / 3; j++)
-            {
-
-                std::shared_ptr<Vertex> v1, v2, v3;
-
-                if(enclosing_triangles[j * 3] < points.size())
-                {
-                    v1 = pointsToVertices[enclosing_triangles[j * 3]];
-                } else
-                {
-                    v1 = newVertices.at(enclosing_triangles[j * 3] - points.size());
-                }
-
-                if(enclosing_triangles[j * 3 + 1] < points.size())
-                {
-                    v2 = pointsToVertices[enclosing_triangles[j * 3 + 1]];
-                } else
-                {
-                    v2 = newVertices.at(enclosing_triangles[j * 3 + 1] - points.size());
-                }
-
-                if(enclosing_triangles[j * 3 + 2] < points.size())
-                {
-                    v3 = pointsToVertices[enclosing_triangles[j * 3 + 2]];
-                } else
-                {
-                    v3 = newVertices.at(enclosing_triangles[j * 3 + 2] - points.size());
-                }
-
-                auto searchEdgeContainingVertex = [verticesEdges](std::shared_ptr<Vertex> v1, std::shared_ptr<Vertex> v2){
-                    std::shared_ptr<Edge> edge = nullptr;
-                    std::vector<std::shared_ptr<Edge> > list1 = verticesEdges.at(v1->getId());
-                    auto it1 = std::find_if(list1.begin(), list1.end(), [v2](std::shared_ptr<Edge> e) { return e->hasVertex(v2);});
-                    if(it1 != list1.end())
-                        edge = *it1;
-                    else
-                    {
-                        std::vector<std::shared_ptr<Edge> > list2 = verticesEdges.at(v2->getId());
-                        auto it2 = std::find_if(list2.begin(), list2.end(), [v1](std::shared_ptr<Edge> e) { return e->hasVertex(v1);});
-                        if(it2 != list2.end())
-                            edge = *it2;
-                    }
-
-                    return edge;
-                };
-
-                std::shared_ptr<Edge> e1 = searchEdgeContainingVertex(v1, v2);
-                if(e1 == nullptr)
-                {
-                    e1 = meshes[0]->addNewEdge(v1, v2);
-                    e1->setId(std::to_string(meshes[0]->getEdgesNumber()));
-                    verticesEdges[v1->getId()].push_back(e1);
-                    verticesEdges[v2->getId()].push_back(e1);
-                    if(v1->getE0() == nullptr)
-                        v1->setE0(e1);
-                    if(v2->getE0() == nullptr)
-                        v2->setE0(e1);
-                }
-                std::shared_ptr<Edge> e2 = searchEdgeContainingVertex(v2,v3);
-                if(e2 == nullptr)
-                {
-                    e2 = meshes[0]->addNewEdge(v2, v3);
-                    e2->setId(std::to_string(meshes[0]->getEdgesNumber()));
-                    verticesEdges[v2->getId()].push_back(e2);
-                    verticesEdges[v3->getId()].push_back(e2);
-                    if(v2->getE0() == nullptr)
-                        v2->setE0(e2);
-                    if(v3->getE0() == nullptr)
-                        v3->setE0(e2);
-                }
-                std::shared_ptr<Edge> e3 = searchEdgeContainingVertex(v3, v1);
-                if(e3 == nullptr)
-                {
-                    e3 = meshes[0]->addNewEdge(v3, v1);
-                    e3->setId(std::to_string(meshes[0]->getEdgesNumber()));
-                    verticesEdges[v3->getId()].push_back(e3);
-                    verticesEdges[v1->getId()].push_back(e3);
-                    if(v3->getE0() == nullptr)
-                        v3->setE0(e3);
-                    if(v1->getE0() == nullptr)
-                        v1->setE0(e3);
-                }
-
-                std::shared_ptr<Triangle> t = meshes[0]->addNewTriangle(e1, e2, e3);
-                if(e1->getT1() == nullptr)
-                    e1->setT1(t);
-                else if(e1->getT2() == nullptr)
-                    e1->setT2(t);
-                else
-                {
-                    std::cerr << "Non manifold configuration!" << std::endl;
-
-                    std::cerr << "Vertices: " << std::endl;
-                    e1->getV1()->print(std::cerr);
-                    e1->getV2()->print(std::cerr);
-                    std::cerr << "v1=";
-                    std::static_pointer_cast<SemantisedTriangleMesh::Point>(v1)->print(std::cerr, BracketsType::SQUARE, " ");
-                    std::cerr << "plot(v1(:,1),v1(:,2),'o'))" << std::endl;
-                    std::cerr << "v2=";
-                    std::static_pointer_cast<SemantisedTriangleMesh::Point>(v2)->print(std::cerr, BracketsType::SQUARE, " ");
-                    std::cerr << "plot(v2(:,1),v2(:,2),'o'))" << std::endl;
-                    std::cerr << "v3=";
-                    std::static_pointer_cast<SemantisedTriangleMesh::Point>(v3)->print(std::cerr, BracketsType::SQUARE, " ");
-                    std::cerr << "plot(v3(:,1),v3(:,2),'o'))" << std::endl;
-                    std::cerr << "Buildings" << std::endl;
-                    uint counter = 0;
-                    for(auto building : buildingsToBeTriangulated)
-                    {
-                        std::cerr <<"%New building" << std::endl;
-                        auto boundaries = building->getOutlines();
-                        for(auto boundary : boundaries)
-                        {
-                            std::cerr << "B" << counter << "=[" << std::endl;
-                            for(auto p : boundary)
-                            {
-                                std::static_pointer_cast<SemantisedTriangleMesh::Point>(p)->print(std::cerr, BracketsType::NONE, " ");
-                            }
-                            std::cerr << "];" << std::endl;
-                            std::cerr << "plot(B" << counter << "(:,1), B" << counter++ << "(:,2));" << std::endl;
-                        }
-                    }
-
-                    std::cerr << "%Triangulation holes" << std::endl;
-                    std::cerr << "figure; hold all;" << std::endl;
-
-                    for(uint k = 0; k < triangulationHoles.at(i).size(); k++)
-                    {
-                        std::cerr << "B" << k << "=[" << std::endl;
-                        for(uint l = 0; l < triangulationHoles.at(i).at(k).size(); l++)
-                        {
-                            std::static_pointer_cast<SemantisedTriangleMesh::Point>(triangulationHoles.at(i).at(k).at(l))->print(std::cerr, BracketsType::NONE, " ");
-                        }
-                        std::cerr << "];" << std::endl;
-                        std::cerr << "plot(B" << k << "(:,1), B" << k << "(:,2));" << std::endl;
-
-                    }
-
-                    e1->getT1()->print(std::cerr);
-                    e1->getT2()->print(std::cerr);
-                    e1->getT1()->getV1()->print(std::cerr);
-                    e1->getT1()->getV2()->print(std::cerr);
-                    e1->getT1()->getV3()->print(std::cerr);
-                    e1->getT2()->getV1()->print(std::cerr);
-                    e1->getT2()->getV2()->print(std::cerr);
-                    e1->getT2()->getV3()->print(std::cerr);
-
-                    exit(123);
-                }
-
-                if(e2->getT1() == nullptr)
-                    e2->setT1(t);
-                else if(e2->getT2() == nullptr)
-                    e2->setT2(t);
-                else
-                {
-                    std::cerr << "Non manifold configuration!" << std::endl;
-
-
-                    std::cerr << "Vertices: " << std::endl;
-                    e1->getV1()->print(std::cerr);
-                    e1->getV2()->print(std::cerr);
-                    std::cerr << "v1=";
-                    std::static_pointer_cast<SemantisedTriangleMesh::Point>(v1)->print(std::cerr, BracketsType::SQUARE, " ");
-                    std::cerr << "plot(v1(:,1),v1(:,2),'o'))" << std::endl;
-                    std::cerr << "v2=";
-                    std::static_pointer_cast<SemantisedTriangleMesh::Point>(v2)->print(std::cerr, BracketsType::SQUARE, " ");
-                    std::cerr << "plot(v2(:,1),v2(:,2),'o'))" << std::endl;
-                    std::cerr << "v3=";
-                    std::static_pointer_cast<SemantisedTriangleMesh::Point>(v3)->print(std::cerr, BracketsType::SQUARE, " ");
-                    std::cerr << "plot(v3(:,1),v3(:,2),'o'))" << std::endl;
-                    std::cerr << "Buildings" << std::endl;
-                    uint counter = 0;
-                    for(auto building : buildingsToBeTriangulated)
-                    {
-                        std::cerr <<"%New building" << std::endl;
-                        auto boundaries = building->getOutlines();
-                        for(auto boundary : boundaries)
-                        {
-                            std::cerr << "B" << counter << "=[" << std::endl;
-                            for(auto p : boundary)
-                            {
-                                std::static_pointer_cast<SemantisedTriangleMesh::Point>(p)->print(std::cerr, BracketsType::NONE, " ");
-                            }
-                            std::cerr << "];" << std::endl;
-                            std::cerr << "plot(B" << counter << "(:,1), B" << counter++ << "(:,2));" << std::endl;
-                        }
-                    }
-
-                    std::cerr << "%Triangulation holes" << std::endl;
-                    std::cerr << "figure; hold all;" << std::endl;
-
-                    for(uint k = 0; k < triangulationHoles.at(i).size(); k++)
-                    {
-                        std::cerr << "B" << k << "=[" << std::endl;
-                        for(uint l = 0; l < triangulationHoles.at(i).at(k).size(); l++)
-                        {
-                            std::static_pointer_cast<SemantisedTriangleMesh::Point>(triangulationHoles.at(i).at(k).at(l))->print(std::cerr, BracketsType::NONE, " ");
-                        }
-                        std::cerr << "];" << std::endl;
-                        std::cerr << "plot(B" << k << "(:,1), B" << k << "(:,2));" << std::endl;
-
-                    }
-
-
-                    std::cerr << "Structure" << std::endl;
-                    for_each(points.begin(), points.end(), [](double* p) { std::cerr << p[0] << " " << p[1] << std::endl;});
-                    for_each(enclosing_triangles.begin(), enclosing_triangles.end(), [](uint id) { std::cerr << id << std::endl;});
-                    std::cerr << "Triangle:" << std::endl;
-                    std::cerr << points[enclosing_triangles[j * 3]][0] << " " << points[enclosing_triangles[j * 3]][1] << std::endl;
-                    std::cerr << points[enclosing_triangles[j * 3 + 1]][0] << " " << points[enclosing_triangles[j * 3 + 1]][1] << std::endl;
-                    std::cerr << points[enclosing_triangles[j * 3 + 2]][0] << " " << points[enclosing_triangles[j * 3 + 2]][1] << std::endl;
-                    exit(123);
-                }
-
-                if(e3->getT1() == nullptr)
-                    e3->setT1(t);
-                else if(e3->getT2() == nullptr)
-                    e3->setT2(t);
-                else
-                {
-                    std::cerr << "Non manifold configuration!" << std::endl;
-
-                    std::cerr << "Vertices: " << std::endl;
-                    e1->getV1()->print(std::cerr);
-                    e1->getV2()->print(std::cerr);
-                    std::cerr << "v1=";
-                    std::static_pointer_cast<SemantisedTriangleMesh::Point>(v1)->print(std::cerr, BracketsType::SQUARE, " ");
-                    std::cerr << "plot(v1(:,1),v1(:,2),'o'))" << std::endl;
-                    std::cerr << "v2=";
-                    std::static_pointer_cast<SemantisedTriangleMesh::Point>(v2)->print(std::cerr, BracketsType::SQUARE, " ");
-                    std::cerr << "plot(v2(:,1),v2(:,2),'o'))" << std::endl;
-                    std::cerr << "v3=";
-                    std::static_pointer_cast<SemantisedTriangleMesh::Point>(v3)->print(std::cerr, BracketsType::SQUARE, " ");
-                    std::cerr << "plot(v3(:,1),v3(:,2),'o'))" << std::endl;
-                    std::cerr << "Buildings" << std::endl;
-                    uint counter = 0;
-                    for(auto building : buildingsToBeTriangulated)
-                    {
-                        std::cerr <<"%New building" << std::endl;
-                        auto boundaries = building->getOutlines();
-                        for(auto boundary : boundaries)
-                        {
-                            std::cerr << "B" << counter << "=[" << std::endl;
-                            for(auto p : boundary)
-                            {
-                                std::static_pointer_cast<SemantisedTriangleMesh::Point>(p)->print(std::cerr, BracketsType::NONE, " ");
-                            }
-                            std::cerr << "];" << std::endl;
-                            std::cerr << "plot(B" << counter << "(:,1), B" << counter++ << "(:,2));" << std::endl;
-                        }
-                    }
-
-                    std::cerr << "%Triangulation holes" << std::endl;
-                    std::cerr << "figure; hold all;" << std::endl;
-
-
-                    for(uint k = 0; k < triangulationHoles.at(i).size(); k++)
-                    {
-                        std::cerr << "B" << k << "=[" << std::endl;
-                        for(uint l = 0; l < triangulationHoles.at(i).at(k).size(); l++)
-                        {
-                            std::static_pointer_cast<SemantisedTriangleMesh::Point>(triangulationHoles.at(i).at(k).at(l))->print(std::cerr, BracketsType::NONE, " ");
-                        }
-                        std::cerr << "];" << std::endl;
-                        std::cerr << "plot(B" << k << "(:,1), B" << k << "(:,2));" << std::endl;
-
-                    }
-
-                    exit(123);
-                }
-
-            }
-            //meshes[0]->save("debug.ply");
-            debugPoints.clear();
-            debugTriangles.clear();
-
-
-            std::cout << i * 100 / triangulationHoles.size() << "%\r" << std::flush;
-        }
-
-
-        for(uint i = 0; i < meshes[0]->getVerticesNumber(); i++)
-        {
-            std::shared_ptr<Vertex> v = meshes[0]->getVertex(i);
-            v->setX(v->getX() * city_size + origin->getX());
-            v->setY(v->getY() * city_size + origin->getY());
-            v->setZ(v->getZ() * city_size + origin->getZ());
-        }
-        std::cout << "Ended" << std::endl << "Adapting elevations to DTM" << std::endl;
-
-        origin.reset();
-
-        std::cout << "Ended" << std::endl << "Associating elevations" << std::endl;
-
-        for(auto building : buildings)
-        {
-            auto boundaries = building->getOutlines();
-            for(auto boundary : boundaries)
-                for(auto v : boundary)
-                    v->addFlag(FlagType::ON_BOUNDARY);
-        }
-
-        uint c = 0;
-        std::cout << "0%";
-        for(auto building : buildings)
-        {
-            auto boundaries = building->getOutlines();
-            for(auto boundary : boundaries)
-            {
-                for(uint i = 1; i < boundary.size(); i++)
-                {
-                    auto v = boundary[i];
-                    uint size = 1, counter = 0;
-                    double mean;
-                    do
-                    {
-                        mean = 0;
-                        std::vector<std::shared_ptr<Vertex> > neighbourhood = v->getNeighbourhood(size++);
-                        if(neighbourhood.size() == 0)
-                        {
-                            std::cerr << "Disconnected vertex" << v->getId() << std::endl;
-                            std::static_pointer_cast<SemantisedTriangleMesh::Point>(v)->print(std::cout, BracketsType::NONE, " ");
-                            for(uint j = 0; j < boundaries.size(); j++)
-                            {
-                                std::cout << "B" << j << "=[" << std::endl;
-                                for(uint k = 0; k < boundaries.at(j).size(); k++)
-                                    std::static_pointer_cast<SemantisedTriangleMesh::Point>(boundaries.at(j).at(k))->print(std::cout, BracketsType::NONE, " ");
-                                std::cout << "];" << std::endl;
-                                std::cout << "plot(B" << j << "(:,1), B" << j << "(:,2));" << std::endl;
-                                std::cout << "labels=num2cell(0:length(B" << counter << ")-1);" << std::endl;
-                                std::cout << "text(B" << j << "(:,1), B" << j << "(:,2), labels);" << std::endl << std::endl;
-                            }
-                            exit(88);
-                        }
-                        for(auto v_ : neighbourhood)
-                            if(v_->searchFlag(FlagType::ON_BOUNDARY) < 0 && v_->getZ() != 0.0)
-                            {
-                                mean += v_->getZ();
-                                counter++;
-                            }
-                        if(counter != 0)
-                            mean /= counter;
-                    } while(counter == 0);
-                    v->setZ(mean);
-                }
-            }
-            std::cout << c++ * 100 / buildings.size() << "%\r" << std::flush;
-
-        }
-        for(auto building : buildings)
-        {
-            auto boundaries = building->getOutlines();
-            for(auto boundary : boundaries)
-                for(auto v : boundary)
-                    v->removeFlag(FlagType::ON_BOUNDARY);
-        }
-
-        for(uint i = 0; i < meshes[0]->getVerticesNumber(); i++)
-        {
-            auto v = meshes[0]->getVertex(i);
-            if(v->getZ() == 0.0)
-            {
-                uint size = 1, counter = 0;
-                double mean;
-                do
-                {
-                    mean = 0;
-                    std::vector<std::shared_ptr<Vertex> > neighbourhood = v->getNeighbourhood(size++);
-                    if(neighbourhood.size() == 0)
-                    {
-                        std::cerr << "Disconnected vertex" << v->getId() << std::endl;
-                        break;
-                    }
-                    for(auto v_ : neighbourhood)
-                        if(v_->getZ() != 0.0)
-                        {
-                            mean += v_->getZ();
-                            counter++;
-                        }
-                    if(counter != 0)
-                        mean /= counter;
-                } while(counter == 0);
-                v->setZ(mean);
-            }
-        }
-
-        std::cout << "Associating heights to buildings." << std::endl;
-        for(uint i = 0; i < buildings.size(); i++)
-        {
-            int row_min = -1, col_min = -1, row_max = 0, col_max = 0;
-            double elevation_min = std::numeric_limits<double>::max(),
-                   elevation_max = -std::numeric_limits<double>::max(),
-                   elevation_mean = 0;
-
-            auto boundaries = buildings.at(i)->getOutlines();
-            uint boundariesPointsNumber = 0;
-            for(uint j = 0; j < boundaries.size(); j++)
-            {
-                for(uint k = 0; k < boundaries.at(j).size() - 1; k++)
-                {
-                    double d = boundaries.at(j).at(k)->getZ();
-                    elevation_mean += d;
-                    if(elevation_min > d)
-                        elevation_min = d;
-                    if(elevation_max < d)
-                        elevation_max = d;
-                }
-                boundariesPointsNumber += boundaries.at(j).size() - 1;
-            }
-
-            elevation_mean /= boundariesPointsNumber;
-
-            boundaries = buildings.at(i)->getOutlines();
-            for(uint j = 0; j < boundaries.size(); j++)
-                for(uint k = 0; k < boundaries.at(j).size() - 1; k++)
-                    boundaries.at(j).at(k)->setZ(elevation_mean);
-        }
-        std::cout <<"Ended!" << std::endl;
-
-
-        std::cout <<"Creating annotations." << std::endl;
-        unsigned char building_color[] = {255, 215, 0};
-        unsigned char street_color[] = {0, 0, 0};
-
-        std::map<Node*, std::shared_ptr<Vertex> > traversed_nodes;
-
-        uint i = 0;
-        for(auto ait = streetsArcs.begin(); ait != streetsArcs.end(); ait++)
-        {
-            std::shared_ptr<LineAnnotation> annotation = std::make_shared<LineAnnotation>();
-            std::vector<std::shared_ptr<Vertex> > annotationPolyline;
-            annotation->setId(std::to_string(i));
-            annotation->setTag("street n° " + std::to_string(i));
-            annotation->setColor(street_color);
-            std::vector<uint> flaggedMeshVertices;
-            double epsilon = 1e-5;
-
-            for(uint j = 1; j < arcsPoints.at(i).size(); j++)
-            {
-                auto v1 = arcsPoints.at(i).at(j - 1);
-                auto v2 = arcsPoints.at(i).at(j);
-
-                auto p = ((*v1) + (*v2)) / 2;
-                auto point = {p.getX(), p.getY(), 0.0};
-                auto neighbourhood = meshes[0]->getNearestNeighbours(p, (*v2 - *v1).norm() / 2 + SemantisedTriangleMesh::Point::EPSILON);
-                for(auto pi : neighbourhood)
-                {
-                    pi->addFlag(FlagType::INSIDE);
-                    flaggedMeshVertices.push_back(std::stoi(pi->getId()));
-                }
-
-            }
-
-            for(uint j = 1; j < arcsPoints.at(i).size(); j++)
-            {
-                auto v1 = arcsPoints.at(i).at(j - 1);
-                auto v2 = arcsPoints.at(i).at(j);
-                auto path = this->meshes[0]->computeShortestPath(v1, v2, DistanceType::EUCLIDEAN_DISTANCE, true, true);
-                double dist = 0.0;
-                for(uint k = 1; k < path.size(); k++)
-                    dist += (*path[k] - *path[k - 1]).norm();
-                if(path.size() > 1 && dist < 2 * (*v2 - *v1).norm())
-                {
-                    path.pop_back();
-                    arcsPoints.at(i).insert(arcsPoints.at(i).begin() + j, path.begin(), path.end());
-                    j += path.size();
-                }
-            }
-
-            for(auto p : flaggedMeshVertices)
-                meshes[0]->getVertex(p)->removeFlag(FlagType::INSIDE);
-
-            for(uint j = 0; j < arcsPoints.at(i).size(); j++)
-            {
-                std::shared_ptr<Vertex> v = std::static_pointer_cast<Vertex>(arcsPoints.at(i).at(j));
-                uint id = static_cast<uint>(stoi(v->getId()));
-                if(arcsPoints.at(i).at(j)->getInfo() != nullptr)
-                {
-                    Node* n = static_cast<Node*>(arcsPoints.at(i).at(j)->getInfo());
-                    if(traversed_nodes.find(n) == traversed_nodes.end())
-                        traversed_nodes.insert(std::make_pair(n, v));
-                }
-                if(id > meshes[0]->getVerticesNumber())
-                    std::cout << "Found deleted vertex in street: " << i << " " << j << std::endl;
-                else
-                {
-                    annotationPolyline.push_back(v);
-                }
-            }
-            annotation->addPolyLine(annotationPolyline);
-
-            std::cout << i * 100 / streetsArcs.size() << "%\r" << std::flush;
-            i++;
-            std::shared_ptr<SemanticAttribute> attribute = std::make_shared<SemanticAttribute>();
-            attribute->setId(0);
-            attribute->setKey("osmid");
-            attribute->setValue(ait->c_str());
-            annotation->addAttribute(attribute);
-
-            annotation->setMesh(meshes[0]);
-            meshes[0]->addAnnotation(annotation);
-
-        }
-
-        i = 0;
-        for(auto it = traversed_nodes.begin(); it != traversed_nodes.end(); it++)
-        {
-
-            std::shared_ptr<PointAnnotation> annotation = std::make_shared<PointAnnotation>();
-            annotation->setId(std::to_string((streetsArcs.size() - 1 + i)));
-            annotation->setTag("node n° " + std::to_string(i++));
-            annotation->setColor(street_color);
-            annotation->addPoint(it->second);
-
-            std::shared_ptr<SemanticAttribute> attribute = std::make_shared<SemanticAttribute>();
-            attribute->setId(0);
-            attribute->setKey("osmid");
-            attribute->setValue(it->first->getId());
-            annotation->addAttribute(attribute);
-
-            annotation->setMesh(meshes[0]);
-            meshes[0]->addAnnotation(annotation);
-
-        }
-
-        uint bid = streetsArcs.size() + traversed_nodes.size();
-
-        uint counter=0;
-        for(uint i = 0; i < buildings.size(); i++)
-        {
-            auto boundaries = buildings[i]->getOutlines();
-            std::shared_ptr<SurfaceAnnotation> annotation = std::make_shared<SurfaceAnnotation>();
-            annotation->setId(std::to_string(bid));
-            annotation->setTag("building n° " + std::to_string(bid++));
-            annotation->setColor(building_color);
-
-            annotation->setOutlines(boundaries);
-
-            annotation->setMesh(meshes[0]);
-            meshes[0]->addAnnotation(annotation);
-            auto height = annotation->getOutlines()[0][0]->getZ();
-
-            auto involved = annotation->getInvolvedVertices();
-
-            for(uint j = 0; j < involved.size(); j++)
-                involved.at(j)->setZ(height);
-        }
-        //meshes[0]->removeIsolatedVertices();
-        for(uint i = 0; i < meshes[0]->getVerticesNumber(); i++)
-            meshes[0]->getVertex(i)->setId(std::to_string(i));
-        for(uint i = 0; i < meshes[0]->getEdgesNumber(); i++)
-            meshes[0]->getEdge(i)->setId(std::to_string(i));
-        for(uint i = 0; i < meshes[0]->getTrianglesNumber(); i++)
-            meshes[0]->getTriangle(i)->setId(std::to_string(i));
-        SemantisedTriangleMesh::SemanticsFileManager manager;
-        manager.setMesh(meshes[0]);
-        manager.writeAnnotations("annotations.ant");
-        meshes[0]->save("level0.ply", 15);
-
-
-    } else
-        return -1;
     return 0;
 }
 

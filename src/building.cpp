@@ -4,7 +4,6 @@
 #include <algorithm>
 #include <utilities.h>
 
-using namespace SemantisedTriangleMesh;
 typedef unsigned int uint;
 
 Building::Building()
@@ -15,6 +14,14 @@ Building::Building()
 void Building::addOuterBoundary(const VertexList boundary)
 {
     outlines.insert(outlines.begin(), boundary);
+}
+
+bool Building::setOutline(uint pos, const VertexList boundary)
+{
+    if(pos >= outlines.size())
+        return false;
+    outlines.at(pos).assign(boundary.begin(), boundary.end());
+    return true;
 }
 
 void Building::addInnerBoundary(const VertexList boundary)
@@ -81,13 +88,13 @@ void Building::fixBoundaries()
             }
 
             auto end = boundary.begin() + boundary.size() - 1;
-            auto it = std::find_if(jit + 1, end, [&] (std::shared_ptr<Vertex> p){ return *p == **jit; });
+            auto it = std::find_if(jit + 1, end, [&] (std::shared_ptr<SemantisedTriangleMesh::Vertex> p){ return *p == **jit; });
             while(it != end)
             {
-                for(std::vector<std::shared_ptr<Vertex> >::iterator it1 = jit + 1; it1 <= it; it1++)
+                for(std::vector<std::shared_ptr<SemantisedTriangleMesh::Vertex> >::iterator it1 = jit + 1; it1 <= it; it1++)
                     it1->reset();
                 boundary.erase(jit + 1, it + 1);
-                it = std::find_if(jit + 1, end, [&] (std::shared_ptr<Vertex> p){ return *p == **jit; });
+                it = std::find_if(jit + 1, end, [&] (std::shared_ptr<SemantisedTriangleMesh::Vertex> p){ return *p == **jit; });
             }
 
             if(jit != boundary.begin())
@@ -112,7 +119,7 @@ VertexList Building::mergeBoundaries(VertexList first, VertexList second)
     size_t i, j = second.size();
     for(i = 0; i < first.size(); i++)
     {
-        auto it2 = std::find_if(second.begin(), second.end(), [&](std::shared_ptr<Point> p){ return *first.at(i) == *p; });
+        auto it2 = std::find_if(second.begin(), second.end(), [&](std::shared_ptr<SemantisedTriangleMesh::Point> p){ return *first.at(i) == *p; });
         if(it2 != second.end())
         {
             j = it2 - second.begin();
@@ -188,4 +195,67 @@ std::vector<VertexList> Building::mergeWithAllAdjacents()
 
     return newBoundaries;
 
+}
+
+std::vector<Building::FlagType> Building::getAssociatedFlags() const
+{
+    return associatedFlags;
+}
+
+void Building::setAssociatedFlags(const std::vector<Building::FlagType> &newAssociatedFlags)
+{
+    associatedFlags = newAssociatedFlags;
+}
+
+bool Building::addFlag(Building::FlagType flag)
+{
+    if(std::find(associatedFlags.begin(), associatedFlags.end(), flag) == associatedFlags.end())
+    {
+        associatedFlags.push_back(flag);
+        return true;
+    }
+    return false;
+}
+
+int Building::searchFlag(Building::FlagType flag)
+{
+
+    std::vector<Building::FlagType>::iterator it = std::find(associatedFlags.begin(), associatedFlags.end(), flag);
+    if(it != associatedFlags.end())
+        return  it - associatedFlags.begin();
+    return -1;
+}
+
+bool Building::removeFlag(Building::FlagType flag)
+{
+
+    int flagPosition = searchFlag(flag);
+    if(flagPosition >= 0)
+    {
+        associatedFlags.erase(associatedFlags.begin() + flagPosition);
+        return true;
+    }
+    return false;
+
+}
+
+bool Building::removeFlag(unsigned int index)
+{
+
+    if(index < associatedFlags.size())
+    {
+        associatedFlags.erase(associatedFlags.begin() + index);
+        return true;
+    }
+    return false;
+}
+
+bool Building::operator==(const Building& other) const
+{
+    return this->getId().compare(other.getId()) == 0;
+}
+
+bool Building::operator!=(const Building& other) const
+{
+    return !((*this) == other);
 }

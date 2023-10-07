@@ -40,14 +40,14 @@ void BuildingsGroup::computeAdjacencyGraph()
         delete adjacencyGraph;
     adjacencyGraph = new GraphTemplate::Graph<std::shared_ptr<Building> > ();
     std::map<std::string, GraphTemplate::Node<std::shared_ptr<Building> >* > buildingIdToNode;
-    for(auto building : buildings)
+    for(const auto& building : buildings)
     {
         auto n = new GraphTemplate::Node<std::shared_ptr<Building> >();
         n->setData(building);
         adjacencyGraph->addNode(n);
         buildingIdToNode.insert(std::make_pair(building->getId(), n));
     }
-    for(auto building : buildings)
+    for(const auto& building : buildings)
     {
         for(auto adjacent : building->getAdjacentBuildings())
         {
@@ -107,14 +107,40 @@ std::vector<VertexList> BuildingsGroup::extractOverallBasePolygon()
 
     std::vector<VertexList> overallBasePolygons;
 
-    std::vector<std::pair<std::shared_ptr<Vertex>, std::vector<std::pair<uint, uint> > > > pointToSegments; //Segments starting from the point in counterclockwise order (1 for each polygon)
+    std::map<std::shared_ptr<Vertex>, std::vector<std::pair<uint, uint> > > pointToSegments; //Segments starting from the point in counterclockwise order (1 for each polygon)
 
     uint buildingPos = 0;
     std::shared_ptr<Vertex> guaranteedOnOuter;
     double minX = std::numeric_limits<double>::max();
 
     uint counter = 0;
-    for(auto building : buildings)
+    if(id.compare("20") == 0)
+    {
+        for(const auto &building : buildings)
+        {
+            auto boundary = building->getOutlines()[0];
+            std::cerr << "B" << counter << "=[" << std::endl;
+            for(const auto& p : boundary)
+                p->print(std::cerr);
+            std::cerr << "];" << std::endl;
+            std::cerr << "plot(B" << counter << "(:,1), B" << counter++ << "(:,2));" << std::endl;
+        }
+
+        counter = 0;
+        for(const auto &building : buildings)
+        {
+            auto boundary = building->getOutlines()[0];
+            std::cerr << "B" << counter << "=[" << std::endl;
+            for(const auto& p : boundary)
+            {
+                std::static_pointer_cast<SemantisedTriangleMesh::Point>(p)->print(std::cerr, BracketsType::NONE, " ");
+            }
+            std::cerr << "];" << std::endl;
+            std::cerr << "plot(B" << counter << "(:,1), B" << counter++ << "(:,2));" << std::endl;
+
+        }
+    }
+    for(const auto &building : buildings)
     {
         uint position = 0;
         auto boundary = building->getOutlines()[0];
@@ -128,15 +154,11 @@ std::vector<VertexList> BuildingsGroup::extractOverallBasePolygon()
                 guaranteedOnOuter = point;
             }
             auto p = std::make_pair(buildingPos, position++);
-            auto it = std::find_if(pointToSegments.begin(), pointToSegments.end(),
-                        [point](std::pair<std::shared_ptr<Vertex>, std::vector<std::pair<uint, uint> > > pair)
-                        {
-                           return *(pair.first) == *point;
-                        });
+            auto it = pointToSegments.find(point);
             if(it == pointToSegments.end())
             {
                 std::vector<std::pair<uint, uint> > segments = {p};
-                pointToSegments.push_back(std::make_pair(point, segments));
+                pointToSegments.insert(std::make_pair(point, segments));
             } else
             {
                 it->second.push_back(p);
@@ -147,11 +169,7 @@ std::vector<VertexList> BuildingsGroup::extractOverallBasePolygon()
 
     std::shared_ptr<Vertex> p1 = guaranteedOnOuter, p2;
     minX = std::numeric_limits<double>::max();
-    auto it = std::find_if(pointToSegments.begin(), pointToSegments.end(),
-                [p1](std::pair<std::shared_ptr<Vertex>, std::vector<std::pair<uint, uint> > > pair)
-                {
-                   return *(pair.first) == *p1;
-                });
+    auto it = pointToSegments.find(p1);
     for(auto segment : it->second)
     {
         auto p = buildings.at(segment.first)->getOutlines()[0].at(segment.second + 1);
@@ -168,11 +186,8 @@ std::vector<VertexList> BuildingsGroup::extractOverallBasePolygon()
     while(*p2 != *begin)
     {
         outsideBoundary.push_back(p1);
-        it = std::find_if(pointToSegments.begin(), pointToSegments.end(),
-                        [p2](std::pair<std::shared_ptr<Vertex>, std::vector<std::pair<uint, uint> > > pair)
-                        {
-                           return *(pair.first) == *p2;
-                        });
+        p1->addFlag(FlagType::OUTSIDE);
+        it = pointToSegments.find(p2);
         auto segments = it->second;
         size_t chosen = segments.size(), pos = 0;
         double maxAngle = -std::numeric_limits<double>::max();
@@ -210,14 +225,205 @@ std::vector<VertexList> BuildingsGroup::extractOverallBasePolygon()
         }
     }
     outsideBoundary.push_back(p1);
+    p1->addFlag(FlagType::OUTSIDE);
     outsideBoundary.push_back(begin);
     overallBasePolygons.push_back(outsideBoundary);
+    counter = 0;
 
-    for(auto building : buildings)
+    std::queue<std::shared_ptr<Vertex> > queue;
+    for(uint i = 0; i < buildings.size(); i++)
+        for(uint j = i + 1; j < buildings.size(); j++)
+        {
+            bool boundary1restarted = false;
+            auto boundary1 = buildings.at(i)->getOutlines().at(0);
+            auto boundary2 = buildings.at(j)->getOutlines().at(0);
+            bool breaked = false;
+            std::reverse(boundary2.begin(), boundary2.end());
+            uint k = 0, l = 0;
+            while (k < boundary1.size() - 1 && l < boundary2.size() - 1) {
+                if (boundary1.at(k).get() == boundary2.at(l).get() || *boundary1.at(k) == *boundary2.at(l)) {
+
+                    if(k > 0)
+                    {
+                        if(boundary1.at(k)->searchFlag(FlagType::OUTSIDE) == -1)
+                            if(boundary1.at(k)->searchFlag(FlagType::ON_HOLE) == -1)
+                            {
+                                queue.push(boundary1.at(k));
+                                boundary1.at(k)->print(std::cout);
+                                boundary1.at(k)->addFlag(FlagType::ON_HOLE);
+                            } else
+                                boundary1.at(k)->addFlag(FlagType::INSIDE);
+                    }
+                    while (boundary1.at(k) == boundary2.at(l)) {
+                        k++;
+                        l++;
+                        if( k == boundary1.size() - 1)
+                            if(!boundary1restarted)
+                            {
+                                k = 0;
+                                boundary1restarted = true;
+                            } else
+                            {
+                                breaked = true;
+                                break;
+                            }
+
+                        if(l == boundary2.size() - 1)
+                            l = 0;
+                    }
+
+                    if(!breaked)
+                    {
+                        uint pos = Utilities::mod(static_cast<int>(k) - 1, boundary1.size() - 1);
+
+                        if(boundary1.at(pos)->searchFlag(FlagType::OUTSIDE) == -1)
+                            if(boundary1.at(pos)->searchFlag(FlagType::ON_HOLE) == -1)
+                            {
+                                queue.push(boundary1.at(pos));
+                                boundary1.at(pos)->print(std::cout);
+                                boundary1.at(pos)->addFlag(FlagType::ON_HOLE);
+                            } else
+                                boundary1.at(pos)->addFlag(FlagType::INSIDE);
+                    }
+                } else
+                {
+                    if(l + 1 == boundary2.size() - 1)
+                    {
+                        k++;
+                        l = 0;
+                    } else
+                        l++;
+                }
+            }
+        }
+
+    for(uint i = 0; i < buildings.size(); i++)
+    {
+        auto boundary1 = buildings.at(i)->getOutlines().at(0);
+        for(uint j = 0; j < boundary1.size(); j++)
+        {
+            uint counter = 0;
+            for(uint k = 0; k < buildings.size(); k++)
+            {
+                if(i == k) continue;
+                auto boundary2 = buildings.at(k)->getOutlines().at(0);
+                for(uint l = 0; l < boundary2.size(); l++)
+                {
+                    if(boundary1.at(j).get() == boundary2.at(l).get())
+                        counter++;
+                }
+            }
+            if(counter == 0 &&
+               boundary1.at(j)->searchFlag(FlagType::ON_HOLE) == -1 &&
+               boundary1.at(j)->searchFlag(FlagType::OUTSIDE) == -1 )
+            {
+                boundary1.at(j)->addFlag(FlagType::ON_HOLE);
+
+            }
+
+        }
+    }
+
+
+    while(queue.size() > 0)
+    {
+        uint counter=0;
+
+        auto v = queue.front();
+        queue.pop();
+        if(v->searchFlag(FlagType::USED) >= 0 || v->searchFlag(FlagType::INSIDE) >= 0) continue;
+
+        std::vector<std::shared_ptr<Vertex> > innerBoundary;
+
+
+        auto begin = v;
+        std::cout << "Begin" << std::endl;
+        std::dynamic_pointer_cast<Point>(begin)->print(std::cout, BracketsType::NONE, " ");
+        std::cout << "Vertices" << std::endl;
+        do
+        {
+
+            std::shared_ptr<Vertex> prev = nullptr;
+            if(innerBoundary.size() > 0)
+                prev = innerBoundary.back();
+            innerBoundary.push_back(v);
+
+            if(id.compare("20") == 0)
+            {
+                v->print(std::cout);
+            }
+            auto segments = pointToSegments.at(v);
+            if(segments.size() == 1)
+            {
+                auto s = segments.at(0);
+                v = buildings.at(s.first)->getOutlines()[0].at(s.second + 1);
+            } else {
+                bool changed = false;
+                std::vector<std::pair<std::shared_ptr<Vertex>, double> > ordered;
+                for(uint pos = 0; pos < segments.size(); pos++)
+                {
+                    auto s = segments.at(pos);
+                    auto p = buildings.at(s.first)->getOutlines()[0].at(s.second + 1);
+                    if(p->searchFlag(FlagType::OUTSIDE) >= 0) continue;
+                    if(prev != nullptr)
+                    {
+                        double p1z = prev->getZ();
+                        double p2z = v->getZ();
+                        double pz = p->getZ();
+                        prev->setZ(0);
+                        v->setZ(0);
+                        p->setZ(0);
+                        double angle = Point::orientation(*prev, *v, *p) * (*v - *prev).computeAngle(*p - *v);
+                        prev->setZ(p1z);
+                        v->setZ(p2z);
+                        p->setZ(pz);
+                        ordered.push_back(std::make_pair(p, angle));
+                    } else
+                        ordered.push_back(std::make_pair(p, 0));
+                }
+                std::sort(ordered.begin(), ordered.end(), [pointToSegments](const std::pair<std::shared_ptr<Vertex>, double> p1,
+                                                             const std::pair<std::shared_ptr<Vertex>, double> p2){
+                    bool firstOnHole = p1.first->searchFlag(FlagType::ON_HOLE) >= 0;
+                    bool secondOnHole = p2.first->searchFlag(FlagType::ON_HOLE) >= 0;
+                    bool different = firstOnHole != secondOnHole;
+
+                    return (different && firstOnHole) ||
+                           (!different && p1.second > p2.second) ||
+                           ((p1.second == 0.0 && p2.second == 0.0) &&
+                            (pointToSegments.at(p1.first).size() < pointToSegments.at(p2.first).size()));
+
+                });
+
+                v = ordered.begin()->first;
+
+
+            }
+            v->addFlag(FlagType::USED);
+
+
+
+        } while( v != begin );
+
+        if(innerBoundary.begin()->get() != innerBoundary.back().get())
+            innerBoundary.push_back(*innerBoundary.begin());
+
+        for_each(innerBoundary.begin(), innerBoundary.end(), [](std::shared_ptr<Vertex> v){
+            v->removeFlag(FlagType::ON_HOLE);
+        });
+        overallBasePolygons.push_back(innerBoundary);
+    }
+
+    for(auto &building : buildings)
     {
         auto boundaries = building->getOutlines();
-        if(building->getOutlines().size() > 1)
+        if(boundaries.size() > 1)
             overallBasePolygons.insert(overallBasePolygons.end(), boundaries.begin() + 1, boundaries.end());
+        for(auto& b : boundaries.at(0))
+        {
+            b->removeFlag(FlagType::OUTSIDE);
+            b->removeFlag(FlagType::INSIDE);
+            b->removeFlag(FlagType::ON_HOLE);
+        }
     }
 
     return overallBasePolygons;

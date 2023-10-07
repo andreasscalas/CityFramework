@@ -263,11 +263,9 @@ std::vector<std::shared_ptr<SemantisedTriangleMesh::Point> > Utilities::bbExtrac
 
 
 
-bool Utilities::isPointInsidePolygon(std::shared_ptr<SemantisedTriangleMesh::Point> v, std::vector<std::shared_ptr<SemantisedTriangleMesh::Vertex> > boundary){
+bool Utilities::isPointInsidePolygon(const std::shared_ptr<SemantisedTriangleMesh::Point> v, const std::vector<std::shared_ptr<SemantisedTriangleMesh::Vertex> > &boundary){
 
     unsigned int c = 0;
-    if(*boundary.back() != *boundary[0])
-        boundary.push_back(boundary.at(0));
     for ( unsigned int i = 1; i < boundary.size(); i++) {
         if ( ((boundary[i]->getY() >= v->getY()) != (boundary[i - 1]->getY() >= v->getY())) &&
              (v->getX() <= (boundary[i - 1]->getX() - boundary[i]->getX()) * (v->getY() - boundary[i]->getY())
@@ -277,11 +275,9 @@ bool Utilities::isPointInsidePolygon(std::shared_ptr<SemantisedTriangleMesh::Poi
     return c;
 }
 
-bool Utilities::isPointInsidePolygon(std::shared_ptr<SemantisedTriangleMesh::Point> v, std::vector<std::shared_ptr<SemantisedTriangleMesh::Point> > boundary){
+bool Utilities::isPointInsidePolygon(const std::shared_ptr<SemantisedTriangleMesh::Point> v, const std::vector<std::shared_ptr<SemantisedTriangleMesh::Point> > &boundary){
 
     unsigned int c = 0;
-    if(*boundary.back() != *boundary[0])
-        boundary.push_back(boundary.at(0));
     for ( unsigned int i = 1; i < boundary.size(); i++) {
         if ( ((boundary[i]->getY() >= v->getY()) != (boundary[i - 1]->getY() >= v->getY())) &&
              (v->getX() <= (boundary[i - 1]->getX() - boundary[i]->getX()) * (v->getY() - boundary[i]->getY())
@@ -550,14 +546,14 @@ std::vector<std::vector<std::pair<unsigned int, unsigned int> > > Utilities::ext
 }
 
 std::vector<std::vector<std::pair<unsigned int, unsigned int> > > Utilities::extractPolygonsHeights(
-        std::vector<std::vector<std::vector<std::shared_ptr<SemantisedTriangleMesh::Vertex> > > > boundaries, GeoTiff *dhm_tiff,
+        std::vector<std::vector<std::vector<std::shared_ptr<SemantisedTriangleMesh::Vertex> > > > &boundaries, GeoTiff *dhm_tiff,
         double scale_factor, SemantisedTriangleMesh::Point origin)
 {
 
     std::vector<std::vector<std::pair<unsigned int, unsigned int> > > heights;
     unsigned int counter = 0;
     std::map<unsigned int, std::pair<unsigned int, unsigned int> > index_to_rowcol;
-    for(unsigned int i = 1; i < boundaries.size(); i++)
+    for(const auto &b : boundaries)
     {
         std::vector<std::pair<unsigned int, unsigned int> > boundary_heights;
         heights.push_back(boundary_heights);
@@ -587,7 +583,7 @@ std::vector<std::vector<std::pair<unsigned int, unsigned int> > > Utilities::ext
 
     counter = 0;
 
-#pragma omp parallel for num_threads(31)
+    #pragma omp parallel for num_threads(31)
     for(unsigned int i = 1; i < boundaries.size(); i++)
     {
         std::vector<std::shared_ptr<SemantisedTriangleMesh::Point> > bb = bbExtraction(boundaries[i][0]);
@@ -619,6 +615,8 @@ std::vector<std::vector<std::pair<unsigned int, unsigned int> > > Utilities::ext
             frame.push_back(std::make_shared<SemantisedTriangleMesh::Point>(min_x, frame.back()->getY(), 0));
             frame.push_back(frame[0]);
 
+            if(*boundaries[i][0].back() != *boundaries[i][0][0])
+                boundaries[i][0].push_back(boundaries[i][0].at(0));
             bool frameInBuilding = false, buildingInFrame = false;
             //Check frame interno (o intersecante) all'edificio
             for(uint k = 0; k < 4; k++)
@@ -626,11 +624,15 @@ std::vector<std::vector<std::pair<unsigned int, unsigned int> > > Utilities::ext
                 {
                     frameInBuilding = true;
                     for(uint l = 0; l <  boundaries[i].size(); l++)
+                    {
+                        if(*boundaries[i][l].back() != *boundaries[i][l][0])
+                            boundaries[i][l].push_back(boundaries[i][l].at(0));
                         if(isPointInsidePolygon(frame[0], boundaries[i][l]))
                         {
                             frameInBuilding = false;
                             break;
                         }
+                    }
                     if(frameInBuilding)
                         break;
                 }
@@ -655,14 +657,14 @@ std::vector<std::vector<std::pair<unsigned int, unsigned int> > > Utilities::ext
 
             std::vector<std::shared_ptr<SemantisedTriangleMesh::Point> > boundaryPoints(boundaries[i][0].begin(), boundaries[i][0].end());
             if(frameInBuilding || buildingInFrame || polygonsIntersect(frame, boundaryPoints))
-                heights[i - 1].push_back(std::make_pair(neighbors.at(j).first, neighbors.at(j).second));
+                heights[i - 1].push_back(neighbors.at(j));
 
             for(unsigned int l = 0; l < 4; l++)
                 frame.at(l).reset();
         }
         if(heights[i - 1].size() == 0)
         {
-#pragma omp critical
+            #pragma omp critical
             {
                 std::cerr << "Impossible case: boundary does not include any pixel while no pixel wholly include the boundary and boundary intersects no pixel" << std::endl;
                 std::cerr << i << std::endl;
@@ -670,7 +672,7 @@ std::vector<std::vector<std::pair<unsigned int, unsigned int> > > Utilities::ext
                 std::cerr << geoTransform[3] << " " << geoTransform[4] << " " << geoTransform[5] << " " << std::endl << std::flush;
                 std::cerr << dhm_tiff->GetDimensions()[0] << " " << dhm_tiff->GetDimensions()[1] << std::endl;
                 uint m = 0;
-                for(auto list : boundaries[i])
+                for(const auto &list : boundaries[i])
                 {
                     std::cerr << "A" << m++ << "=[" << std::endl;
                     for(auto p : list)
@@ -697,7 +699,7 @@ std::vector<std::vector<std::pair<unsigned int, unsigned int> > > Utilities::ext
                 exit(6);
             }
         }
-#pragma omp critical
+        #pragma omp critical
         {
             counter++;
             std::cout << counter * 100 / boundaries.size() << "%\r" << std::flush;

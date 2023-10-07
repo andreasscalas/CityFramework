@@ -118,11 +118,10 @@ namespace Utilities {
 
     void fix_lines(std::vector<std::vector<std::shared_ptr<SemantisedTriangleMesh::Point> > > &lines);
 
-    bool isPointInsidePolygon(std::shared_ptr<SemantisedTriangleMesh::Point> v,
-                              std::vector<std::shared_ptr<SemantisedTriangleMesh::Vertex> > boundary);
+    bool isPointInsidePolygon(const std::shared_ptr<SemantisedTriangleMesh::Point> v,
+                              const std::vector<std::shared_ptr<SemantisedTriangleMesh::Vertex> > &boundary);
 
-    bool isPointInsidePolygon(std::shared_ptr<SemantisedTriangleMesh::Point> v, std::vector<std::shared_ptr<SemantisedTriangleMesh::Point> > boundary);
-
+    bool isPointInsidePolygon(const std::shared_ptr<SemantisedTriangleMesh::Point> v, const std::vector<std::shared_ptr<SemantisedTriangleMesh::Point> > &boundary);
     bool isPointOnBoundary(std::shared_ptr<SemantisedTriangleMesh::Point> v, std::vector<std::shared_ptr<SemantisedTriangleMesh::Point> > boundary);
 
     bool isPolygonInsidePolygon(std::vector<std::shared_ptr<SemantisedTriangleMesh::Point> > boundary1, std::vector<std::shared_ptr<SemantisedTriangleMesh::Point> > boundary2);
@@ -149,7 +148,7 @@ namespace Utilities {
                                                                                              SemantisedTriangleMesh::Point origin = SemantisedTriangleMesh::Point(0,0,0));
 
 
-    std::vector<std::vector<std::pair<unsigned int, unsigned int> > > extractPolygonsHeights(std::vector<std::vector<std::vector<std::shared_ptr<SemantisedTriangleMesh::Vertex> > > > boundaries,
+    std::vector<std::vector<std::pair<unsigned int, unsigned int> > > extractPolygonsHeights(std::vector<std::vector<std::vector<std::shared_ptr<SemantisedTriangleMesh::Vertex> > > > &boundaries,
                                                                                              GeoTiff* dhm_tiff, double scale_factor = 1.0,
                                                                                              SemantisedTriangleMesh::Point origin = SemantisedTriangleMesh::Point(0,0,0));
 

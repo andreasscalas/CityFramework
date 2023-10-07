@@ -6,7 +6,8 @@ set(version 0.1)
 set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O0")
-find_package(shapelib)
+find_path(libshp_INCLUDE_DIRS libshp)
+find_library(libshp_LIBRARIES libshp)
 find_package(GDAL CONFIG REQUIRED)
 find_package(RapidJSON)
 find_path(DATA_STRUCTURES_H DataStructures )
@@ -16,6 +17,7 @@ find_package(libLAS REQUIRED)
 find_package(GeoJSONParser REQUIRED)
 find_package(SemantisedTriangleMesh REQUIRED)
 find_package(OSMManager REQUIRED)
+find_package(Boost REQUIRED COMPONENTS serialization)
 
 if(NOT SemantisedTriangleMesh_FOUND)
     message(SEND_ERROR "The SemantisedTriangleMesh library is required")
@@ -48,7 +50,7 @@ set(LibrarySrcs
 
 add_library(CityDigitalTwin ${LibrarySrcs} ${LibraryHdrs} )
 target_include_directories(CityDigitalTwin PUBLIC
-    $<BUILD_INTERFACE:${shapelib_INCLUDE_DIRS}>
+    $<BUILD_INTERFACE:${libshp_INCLUDE_DIRS}>
     $<BUILD_INTERFACE:${Boost_INCLUDE_DIR}>
     $<BUILD_INTERFACE:${RAPIDJSON_INCLUDE_DIRS}>
     $<BUILD_INTERFACE:${PROJ_INCLUDE_DIRS}>
@@ -60,7 +62,7 @@ target_include_directories(CityDigitalTwin PUBLIC
 )
 
 target_link_libraries(CityDigitalTwin
-    ${shapelib_LIBRARIES}
+    ${libshp_LIBRARIES}
     GDAL::GDAL
     ${libLAS_LIBRARIES}
     ${PROJ_LIBRARIES}
@@ -118,7 +120,7 @@ add_executable(TestExtruder ${ExtruderSrcs} ${ExtruderHdrs} )
 
 target_include_directories(TestExtruder PRIVATE
     ${MAIN_FOLDER}/include/
-    ${shapelib_INCLUDE_DIRS}
+    ${libshp_INCLUDE_DIRS}
     ${Boost_INCLUDE_DIR}
     ${RAPIDJSON_INCLUDE_DIRS}
     ${PROJ_INCLUDE_DIRS}
@@ -129,7 +131,7 @@ target_include_directories(TestExtruder PRIVATE
 )
 
 target_link_libraries(TestExtruder
-    ${shapelib_LIBRARIES}
+    ${libshp_LIBRARIES}
     GDAL::GDAL
     ${libLAS_LIBRARIES}
     ${PROJ_LIBRARIES}
@@ -157,7 +159,7 @@ add_executable(TestInPolygon ${TestInPolygonSrcs} ${TestInPolygonHdrs} )
 target_include_directories(TestInPolygon PRIVATE
     ${MAIN_FOLDER}/include/
     ${MAIN_FOLDER}/prepair/
-    ${shapelib_INCLUDE_DIRS}
+    ${libshp_INCLUDE_DIRS}
     ${Boost_INCLUDE_DIR}
     ${RAPIDJSON_INCLUDE_DIRS}
     ${PROJ_INCLUDE_DIRS}
@@ -167,9 +169,10 @@ target_include_directories(TestInPolygon PRIVATE
     ${OSMManager_INCLUDE_DIRS}
 )
 target_link_libraries(TestInPolygon
-    ${shapelib_LIBRARIES}
+    ${libshp_LIBRARIES}
     ${SemantisedTriangleMesh_LIBRARIES}
-    GDAL::GDAL ${libLAS_LIBRARIES}
+    GDAL::GDAL
+    ${libLAS_LIBRARIES}
     ${PROJ_LIBRARIES}
     ${DATA_STRUCTURES_LIB}
     ${GeoJSONParser_LIBRARIES}
@@ -202,7 +205,7 @@ add_executable(Test ${TestSrcs} ${TestHdrs} )
 target_include_directories(Test PRIVATE
     ${MAIN_FOLDER}/include/
     ${MAIN_FOLDER}/prepair/
-    ${shapelib_INCLUDE_DIRS}
+    ${libshp_INCLUDE_DIRS}
     ${Boost_INCLUDE_DIR}
     ${RAPIDJSON_INCLUDE_DIRS}
     ${PROJ_INCLUDE_DIRS}
@@ -212,7 +215,7 @@ target_include_directories(Test PRIVATE
     ${OSMManager_INCLUDE_DIRS}
 )
 target_link_libraries(Test
-    ${shapelib_LIBRARIES}
+    ${libshp_LIBRARIES}
     GDAL::GDAL
     ${libLAS_LIBRARIES}
     ${PROJ_LIBRARIES}
@@ -249,7 +252,7 @@ add_executable(BuildLOD2Building ${BuildLOD2BuildingSrcs} ${BuildLOD2BuildingHdr
 target_include_directories(BuildLOD2Building PRIVATE
     ${MAIN_FOLDER}/include/
     ${MAIN_FOLDER}/prepair/
-    ${shapelib_INCLUDE_DIRS}
+    ${libshp_INCLUDE_DIRS}
     ${Boost_INCLUDE_DIR}
     ${RAPIDJSON_INCLUDE_DIRS}
     ${PROJ_INCLUDE_DIRS}
@@ -260,7 +263,7 @@ target_include_directories(BuildLOD2Building PRIVATE
 )
 
 target_link_libraries(BuildLOD2Building
-    ${shapelib_LIBRARIES}
+    ${libshp_LIBRARIES}
     GDAL::GDAL
     ${libLAS_LIBRARIES}
     ${PROJ_LIBRARIES}
@@ -303,7 +306,7 @@ add_executable(ComputeSlopes ${ComputeSlopesSrcs} ${ComputeSlopesHdrs} )
 target_include_directories(ComputeSlopes PRIVATE
     ${MAIN_FOLDER}/include/
     ${MAIN_FOLDER}/prepair/
-    ${shapelib_INCLUDE_DIRS}
+    ${libshp_INCLUDE_DIRS}
     ${RAPIDJSON_INCLUDE_DIRS}
     ${PROJ_INCLUDE_DIRS}
     ${DATA_STRUCTURES_H}
@@ -311,7 +314,7 @@ target_include_directories(ComputeSlopes PRIVATE
     ${OSMManager_INCLUDE_DIRS}
 )
 target_link_libraries(ComputeSlopes
-    ${shapelib_LIBRARIES}
+    ${libshp_LIBRARIES}
     GDAL::GDAL
     ${libLAS_LIBRARIES}
     ${PROJ_LIBRARIES}
@@ -345,7 +348,7 @@ add_executable(CreateItinerary ${CreateItinerarySrcs} ${CreateItineraryHdrs} )
 target_include_directories(CreateItinerary PRIVATE
     ${MAIN_FOLDER}/include/
     ${MAIN_FOLDER}/prepair/
-    ${shapelib_INCLUDE_DIRS}
+    ${libshp_INCLUDE_DIRS}
     ${Boost_INCLUDE_DIR}
     ${RAPIDJSON_INCLUDE_DIRS}
     ${PROJ_INCLUDE_DIRS}
@@ -355,7 +358,7 @@ target_include_directories(CreateItinerary PRIVATE
     ${OSMManager_INCLUDE_DIRS}
 )
 target_link_libraries(CreateItinerary
-    ${shapelib_LIBRARIES}
+    ${libshp_LIBRARIES}
     ${SemantisedTriangleMesh_LIBRARIES}
     GDAL::GDAL ${libLAS_LIBRARIES}
     ${PROJ_LIBRARIES}
@@ -387,7 +390,7 @@ add_executable(TerrainTriangulation ${TerrainTriangulationSrcs} ${TerrainTriangu
 target_include_directories(TerrainTriangulation PRIVATE
     ${MAIN_FOLDER}/include/
     ${MAIN_FOLDER}/prepair/
-    ${shapelib_INCLUDE_DIRS}
+    ${libshp_INCLUDE_DIRS}
     ${Boost_INCLUDE_DIR}
     ${RAPIDJSON_INCLUDE_DIRS}
     ${PROJ_INCLUDE_DIRS}
@@ -397,7 +400,7 @@ target_include_directories(TerrainTriangulation PRIVATE
     ${OSMManager_INCLUDE_DIRS}
 )
 target_link_libraries(TerrainTriangulation
-    ${shapelib_LIBRARIES} GDAL::GDAL
+    ${libshp_LIBRARIES} GDAL::GDAL
     ${libLAS_LIBRARIES}
     ${PROJ_LIBRARIES}
     ${DATA_STRUCTURES_LIB}
@@ -440,7 +443,7 @@ if(VTK_FOUND)
     target_include_directories(VisualiseCity PRIVATE
         ${MAIN_FOLDER}/include/
         ${MAIN_FOLDER}/prepair/
-        ${shapelib_INCLUDE_DIRS}
+        ${libshp_INCLUDE_DIRS}
         ${Boost_INCLUDE_DIR}
         ${RAPIDJSON_INCLUDE_DIRS}
         ${PROJ_INCLUDE_DIRS}
@@ -450,7 +453,7 @@ if(VTK_FOUND)
         ${OSMManager_INCLUDE_DIRS}
     )
     target_link_libraries(VisualiseCity
-        ${shapelib_LIBRARIES}
+        ${libshp_LIBRARIES}
         ${SemantisedTriangleMesh_LIBRARIES}
         GDAL::GDAL ${libLAS_LIBRARIES}
         ${PROJ_LIBRARIES}

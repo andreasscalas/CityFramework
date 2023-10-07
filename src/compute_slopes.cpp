@@ -143,7 +143,7 @@ int main(int argc, char* argv[])
         if(arc == osm.getWays().end())
         {
             std::cerr << "One street annotation is not present in OSM." << std::endl;
-            return 47;
+            continue;
         }
         if(polylines.size() > 1)
         {
